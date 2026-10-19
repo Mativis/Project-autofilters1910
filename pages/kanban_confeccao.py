@@ -317,12 +317,16 @@ if uploaded_pedidos is None or uploaded_estoque is None:
             | Mais de 1 mês (> 30 dias) | 🟢 Baixa |
             | Menos de 1 mês e mais de 15 dias (16 a 30) | 🟠 Média |
             | Menos de 15 dias (ou atrasado) | 🔴 Alta |
+
+            ### Regra de quantidade:
+            - 🚫 Linhas em que o **Saldo** é **igual ou menor que 4% da Qtd** são desconsideradas
+              (ex.: Qtd = 100 → Saldo ≤ 4 é descartado). Pode ser desativada na barra lateral.
         """)
     st.stop()
 
 # ==================== CARREGAMENTO E FILTRAGEM ====================
 
-COLUNAS_PEDIDOS = ["Compra", "Cód Confec", "Confeccionado", "Saldo", "Dt Entrega", "Confecção"]
+COLUNAS_PEDIDOS = ["Compra", "Cód Confec", "Confeccionado", "Qtd", "Saldo", "Dt Entrega", "Confecção"]
 
 try:
     df_pedidos = load_excel(uploaded_pedidos)
@@ -355,6 +359,7 @@ df_kanban = df_pedidos[df_pedidos["Cód Confec_norm"].isin(codigos_saldo2_neg)].
 # 3) Preparar colunas exibidas no kanban (dados somente de Pedidos)
 df_kanban["Dt Entrega"] = pd.to_datetime(df_kanban["Dt Entrega"], errors="coerce")
 df_kanban["Saldo"] = pd.to_numeric(df_kanban["Saldo"], errors="coerce")
+df_kanban["Qtd"] = pd.to_numeric(df_kanban["Qtd"], errors="coerce")
 df_kanban["Prioridade"] = df_kanban["Dt Entrega"].apply(calcular_prioridade)
 df_kanban["Confecção"] = (
     df_kanban["Confecção"].fillna("").astype(str).str.strip().replace("", "Sem Confecção")
@@ -387,7 +392,24 @@ with st.sidebar:
 
     termo_busca = st.text_input("Buscar por código ou descrição:", value="")
 
-df_filtrado = df_kanban[df_kanban["Confecção"].isin(confeccoes_sel)].copy()
+    st.markdown("---")
+    desconsiderar_saldo_baixo = st.checkbox(
+        "Desconsiderar Saldo ≤ 4% da Qtd",
+        value=True,
+        help="Remove as linhas em que o Saldo é igual ou menor que 4% da Qtd.",
+    )
+
+# ==================== REGRA: Saldo ≤ 4% da Qtd ====================
+
+df_base = df_kanban.copy()
+linhas_descartadas = 0
+
+if desconsiderar_saldo_baixo:
+    mask_saldo_baixo = (df_base["Qtd"] > 0) & (df_base["Saldo"] <= df_base["Qtd"] * 0.04)
+    linhas_descartadas = int(mask_saldo_baixo.sum())
+    df_base = df_base[~mask_saldo_baixo].copy()
+
+df_filtrado = df_base[df_base["Confecção"].isin(confeccoes_sel)].copy()
 df_filtrado = df_filtrado[df_filtrado["Prioridade"].isin(prioridades_sel)]
 
 if termo_busca.strip():
@@ -396,6 +418,13 @@ if termo_busca.strip():
         df_filtrado["Cód Confec"].str.lower().str.contains(termo, na=False)
         | df_filtrado["Confeccionado"].str.lower().str.contains(termo, na=False)
     ]
+
+if desconsiderar_saldo_baixo and linhas_descartadas > 0:
+    st.info(
+        f"ℹ️ {linhas_descartadas} linha(s) desconsiderada(s) por terem "
+        f"Saldo ≤ 4% da Qtd (dados apenas de Pedidos)."
+    )
+
 
 # ==================== MÉTRICAS ====================
 
