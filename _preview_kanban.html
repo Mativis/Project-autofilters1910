@@ -1,0 +1,153 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><style>
+        :root {
+            --kb-primary: #667eea;
+            --kb-secondary: #764ba2;
+            --kb-alta: #f44336;
+            --kb-media: #ff9800;
+            --kb-baixa: #4caf50;
+        }
+
+        .kb-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.8rem 2.2rem;
+            border-radius: 15px;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        .kb-header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 280px;
+            height: 280px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+        }
+        .kb-header h1 { margin: 0; font-size: 2.1rem; font-weight: 800; position: relative; z-index: 1; }
+        .kb-header p { margin: 0.6rem 0 0 0; opacity: 0.95; font-size: 1.05rem; position: relative; z-index: 1; }
+
+        .kb-legend {
+            display: flex;
+            gap: 0.8rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.2rem;
+        }
+        .kb-legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 20px;
+            padding: 0.35rem 0.9rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .kb-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .kb-dot.alta { background: var(--kb-alta); }
+        .kb-dot.media { background: var(--kb-media); }
+        .kb-dot.baixa { background: var(--kb-baixa); }
+
+        .kb-tab-summary {
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f2 100%);
+            border: 1px solid #dde2ee;
+            border-radius: 10px;
+            padding: 0.7rem 1rem;
+            margin: 0.2rem 0 1rem 0;
+            font-size: 0.88rem;
+            color: #5a6172;
+            font-weight: 600;
+        }
+        .kb-tab-summary b { color: #3d4455; }
+
+        .kb-badge {
+            display: inline-block;
+            padding: 0.18rem 0.6rem;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: white;
+            white-space: nowrap;
+        }
+        .kb-badge.alta { background: var(--kb-alta); }
+        .kb-badge.media { background: var(--kb-media); }
+        .kb-badge.baixa { background: var(--kb-baixa); }
+
+        /* Planilha — uma linha por item */
+        .kb-sheet-wrap {
+            overflow-x: auto;
+            background: white;
+            border: 1px solid #e2e6f0;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            margin-bottom: 0.4rem;
+        }
+        table.kb-sheet {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        table.kb-sheet thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e9edf6 100%);
+            color: #5a6172;
+            text-align: left;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-weight: 800;
+            padding: 0.7rem 0.8rem;
+            border-bottom: 2px solid #d9dfec;
+            white-space: nowrap;
+        }
+        table.kb-sheet tbody td {
+            padding: 0.6rem 0.8rem;
+            border-bottom: 1px solid #eef1f7;
+            color: #3d4455;
+            vertical-align: middle;
+        }
+        table.kb-sheet tbody tr:nth-child(even) { background: #fbfcfe; }
+        table.kb-sheet tbody tr:hover { background: #f3f6fd; }
+        table.kb-sheet td.kb-num { text-align: right; font-weight: 700; white-space: nowrap; }
+        table.kb-sheet td.kb-date { white-space: nowrap; }
+        table.kb-sheet td.kb-desc-cell { min-width: 280px; }
+        table.kb-sheet td.kb-conf-cell { color: #5a6172; white-space: nowrap; }
+        table.kb-sheet tr.row-alta td:first-child { box-shadow: inset 4px 0 0 var(--kb-alta); }
+        table.kb-sheet tr.row-media td:first-child { box-shadow: inset 4px 0 0 var(--kb-media); }
+        table.kb-sheet tr.row-baixa td:first-child { box-shadow: inset 4px 0 0 var(--kb-baixa); }
+        table.kb-sheet tfoot td {
+            padding: 0.65rem 0.8rem;
+            border-top: 2px solid #d9dfec;
+            background: #f8fafd;
+            color: #3d4455;
+            font-weight: 800;
+        }
+        .kb-sheet-wrap .kb-cod {
+            display: inline-block;
+            background: #f0f2f8;
+            border: 1px solid #dde2ee;
+            color: #5a6172;
+            border-radius: 6px;
+            padding: 0.1rem 0.45rem;
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        .kb-info-box {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            padding: 0.9rem 1rem;
+            border-radius: 10px;
+            border-left: 4px solid #2196f3;
+            margin: 0.8rem 0;
+            font-size: 0.92rem;
+        }
+    
+body { padding: 24px; background: #eef1f6 !important; }
+</style></head><body><div class="kb-header"><h1>📌 Kanban de Confecção — Pedidos sem Estoque</h1><p>Itens do Estoque com <b>Saldo 2 negativo</b>, localizados nos Pedidos pelo <b>Cód Confec</b> e agrupados por confecção</p></div><div class="kb-legend"><span class="kb-legend-item"><span class="kb-dot alta"></span> 🔴 Alta — até 15 dias</span><span class="kb-legend-item"><span class="kb-dot media"></span> 🟠 Média — 16 a 30 dias</span><span class="kb-legend-item"><span class="kb-dot baixa"></span> 🟢 Baixa — mais de 1 mês</span></div><div class="kb-tab-summary">🏭 <b>DECORAZZA INDUSTRIA E COMERCIO TEXTIL LTDA</b> &nbsp;·&nbsp; <b>2</b> pedido(s) &nbsp;·&nbsp; 📦 <b>114</b> unidade(s)</div><div class="kb-sheet-wrap"><table class="kb-sheet"><thead><tr><th>Pedido</th><th>Cód Confec</th><th>Descrição</th><th>Confecção</th><th style="text-align:right">Quantidade</th><th>Data de Entrega</th><th>Prioridade</th></tr></thead><tbody><tr class="row-alta"><td>64051</td><td><span class="kb-cod">23012</span></td><td class="kb-desc-cell">ALMOFADA CARMEL 30X50 BECADECOR AZUL MARINHO/BRANCA</td><td class="kb-conf-cell">DECORAZZA INDUSTRIA E COMERCIO TEXTIL LTDA</td><td class="kb-num">6</td><td class="kb-date">16/10/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>64398</td><td><span class="kb-cod">23022</span></td><td class="kb-desc-cell">ALMOFADA PAVIA TELAS VELUDO 50X50 BECADECOR BEGE</td><td class="kb-conf-cell">DECORAZZA INDUSTRIA E COMERCIO TEXTIL LTDA</td><td class="kb-num">108</td><td class="kb-date">23/10/2026</td><td><span class="kb-badge alta">Alta</span></td></tr></tbody><tfoot><tr><td colspan="4">Total (2 itens)</td><td class="kb-num">114</td><td colspan="2"></td></tr></tfoot></table></div><div class="kb-tab-summary">🏭 <b>FACCIONISTA AMERICANA LTDA</b> &nbsp;·&nbsp; <b>11</b> pedido(s) &nbsp;·&nbsp; 📦 <b>971</b> unidade(s)</div><div class="kb-sheet-wrap"><table class="kb-sheet"><thead><tr><th>Pedido</th><th>Cód Confec</th><th>Descrição</th><th>Confecção</th><th style="text-align:right">Quantidade</th><th>Data de Entrega</th><th>Prioridade</th></tr></thead><tbody><tr class="row-alta"><td>63310</td><td><span class="kb-cod">23960</span></td><td class="kb-desc-cell">JG DE LENÇOL STRIPE 4P QUEEN LEROY BRANCO</td><td class="kb-conf-cell">FACCIONISTA AMERICANA LTDA</td><td class="kb-num">51</td><td class="kb-date">16/09/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>63311</td><td><span class="kb-cod">23961</span></td><td class="kb-desc-cell">JG DE LENÇOL STRIPE 4P QUEEN LEROY BEGE</td><td class="kb-conf-cell">FACCIONISTA AMERICANA LTDA</td><td class="kb-num">7</td><td class="kb-date">16/09/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>63738</td><td><span class="kb-cod">23961</span></td><td class="kb-desc-cell">JG DE LENÇOL STRIPE 4P QUEEN LEROY BEGE</td><td class="kb-conf-cell">FACCIONISTA AMERICANA LTDA</td><td class="kb-num">32</td><td class="kb-date">30/09/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>63704</td><td><span class="kb-cod">23960</span></td><td class="kb-desc-cell">JG DE LENÇOL STRIPE 4P QUEEN LEROY BRANCO</td><td class="kb-conf-cell">FACCIONISTA AMERICANA LTDA</td><td class="kb-num">0</td><td class="kb-date">05/10/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>63995</td><td><span class="kb-cod">23961</span></td><td class="kb-desc-cell">JG DE LENÇOL STRIPE 4P QUEEN LEROY BEGE</td><td class="kb-conf-cell">FACCIONISTA AMERICANA LTDA</td><td class="kb-num">96</td><td class="kb-date">09/10/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>63995</td><td><span class="kb-cod">23960</span></td><td class="kb-desc-cell">JG DE LENÇOL STRIPE 4P QUEEN LEROY BRANCO</td><td class="kb-conf-cell">FACCIONISTA AMERICANA LTDA</td><td class="kb-num">112</td><td class="kb-date">09/10/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>63945</td><td><span class="kb-cod">23957</span></td><td class="kb-desc-cell">JG DE LENÇOL STRIPE 4P CASAL LEROY BEGE</td><td class="kb-conf-cell">FACCIONISTA AMERICANA LTDA</td><td class="kb-num">40</td><td class="kb-date">13/10/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>63945</td><td><span class="kb-cod">23961</span></td><td class="kb-desc-cell">JG DE LENÇOL STRIPE 4P QUEEN LEROY BEGE</td><td class="kb-conf-cell">FACCIONISTA AMERICANA LTDA</td><td class="kb-num">16</td><td class="kb-date">13/10/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>64318</td><td><span class="kb-cod">23957</span></td><td class="kb-desc-cell">JG DE LENÇOL STRIPE 4P CASAL LEROY BEGE</td><td class="kb-conf-cell">FACCIONISTA AMERICANA LTDA</td><td class="kb-num">210</td><td class="kb-date">28/10/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>64318</td><td><span class="kb-cod">23961</span></td><td class="kb-desc-cell">JG DE LENÇOL STRIPE 4P QUEEN LEROY BEGE</td><td class="kb-conf-cell">FACCIONISTA AMERICANA LTDA</td><td class="kb-num">215</td><td class="kb-date">28/10/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>64320</td><td><span class="kb-cod">23960</span></td><td class="kb-desc-cell">JG DE LENÇOL STRIPE 4P QUEEN LEROY BRANCO</td><td class="kb-conf-cell">FACCIONISTA AMERICANA LTDA</td><td class="kb-num">192</td><td class="kb-date">28/10/2026</td><td><span class="kb-badge alta">Alta</span></td></tr></tbody><tfoot><tr><td colspan="4">Total (11 itens)</td><td class="kb-num">971</td><td colspan="2"></td></tr></tfoot></table></div><div class="kb-tab-summary">🏭 <b>PRISCILA APARECIDA CORDEIRO PIEMONTE DA SILVA CONFECCOES</b> &nbsp;·&nbsp; <b>2</b> pedido(s) &nbsp;·&nbsp; 📦 <b>28</b> unidade(s)</div><div class="kb-sheet-wrap"><table class="kb-sheet"><thead><tr><th>Pedido</th><th>Cód Confec</th><th>Descrição</th><th>Confecção</th><th style="text-align:right">Quantidade</th><th>Data de Entrega</th><th>Prioridade</th></tr></thead><tbody><tr class="row-alta"><td>59875</td><td><span class="kb-cod">23012</span></td><td class="kb-desc-cell">ALMOFADA CARMEL 30X50 BECADECOR AZUL MARINHO/BRANCA</td><td class="kb-conf-cell">PRISCILA APARECIDA CORDEIRO PIEMONTE DA SILVA CONFECCOES</td><td class="kb-num">20</td><td class="kb-date">30/04/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>63765</td><td><span class="kb-cod">23022</span></td><td class="kb-desc-cell">ALMOFADA PAVIA TELAS VELUDO 50X50 BECADECOR BEGE</td><td class="kb-conf-cell">PRISCILA APARECIDA CORDEIRO PIEMONTE DA SILVA CONFECCOES</td><td class="kb-num">8</td><td class="kb-date">09/10/2026</td><td><span class="kb-badge alta">Alta</span></td></tr></tbody><tfoot><tr><td colspan="4">Total (2 itens)</td><td class="kb-num">28</td><td colspan="2"></td></tr></tfoot></table></div><div class="kb-tab-summary">🏭 <b>SHELTER INDUSTRIA E COMERCIO DE TRAVESSEIROS LIMITADA</b> &nbsp;·&nbsp; <b>7</b> pedido(s) &nbsp;·&nbsp; 📦 <b>868</b> unidade(s)</div><div class="kb-sheet-wrap"><table class="kb-sheet"><thead><tr><th>Pedido</th><th>Cód Confec</th><th>Descrição</th><th>Confecção</th><th style="text-align:right">Quantidade</th><th>Data de Entrega</th><th>Prioridade</th></tr></thead><tbody><tr class="row-alta"><td>62608</td><td><span class="kb-cod">23478</span></td><td class="kb-desc-cell">FUTON ACQUABLOCK LISA 1,20X1,00 BECADECOR ALTO TERRACOTA</td><td class="kb-conf-cell">SHELTER INDUSTRIA E COMERCIO DE TRAVESSEIROS LIMITADA</td><td class="kb-num">37</td><td class="kb-date">28/08/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>63083</td><td><span class="kb-cod">23469</span></td><td class="kb-desc-cell">FUTON ACQUABLOCK LISA 60X60 BECADECOR ALTO AZUL</td><td class="kb-conf-cell">SHELTER INDUSTRIA E COMERCIO DE TRAVESSEIROS LIMITADA</td><td class="kb-num">71</td><td class="kb-date">11/09/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>63458</td><td><span class="kb-cod">23469</span></td><td class="kb-desc-cell">FUTON ACQUABLOCK LISA 60X60 BECADECOR ALTO AZUL</td><td class="kb-conf-cell">SHELTER INDUSTRIA E COMERCIO DE TRAVESSEIROS LIMITADA</td><td class="kb-num">85</td><td class="kb-date">25/09/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>63870</td><td><span class="kb-cod">23022</span></td><td class="kb-desc-cell">ALMOFADA PAVIA TELAS VELUDO 50X50 BECADECOR BEGE</td><td class="kb-conf-cell">SHELTER INDUSTRIA E COMERCIO DE TRAVESSEIROS LIMITADA</td><td class="kb-num">127</td><td class="kb-date">02/10/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>63899</td><td><span class="kb-cod">23469</span></td><td class="kb-desc-cell">FUTON ACQUABLOCK LISA 60X60 BECADECOR ALTO AZUL</td><td class="kb-conf-cell">SHELTER INDUSTRIA E COMERCIO DE TRAVESSEIROS LIMITADA</td><td class="kb-num">156</td><td class="kb-date">02/10/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>63962</td><td><span class="kb-cod">23478</span></td><td class="kb-desc-cell">FUTON ACQUABLOCK LISA 1,20X1,00 BECADECOR ALTO TERRACOTA</td><td class="kb-conf-cell">SHELTER INDUSTRIA E COMERCIO DE TRAVESSEIROS LIMITADA</td><td class="kb-num">42</td><td class="kb-date">09/10/2026</td><td><span class="kb-badge alta">Alta</span></td></tr><tr class="row-alta"><td>64199</td><td><span class="kb-cod">23012</span></td><td class="kb-desc-cell">ALMOFADA CARMEL 30X50 BECADECOR AZUL MARINHO/BRANCA</td><td class="kb-conf-cell">SHELTER INDUSTRIA E COMERCIO DE TRAVESSEIROS LIMITADA</td><td class="kb-num">350</td><td class="kb-date">16/10/2026</td><td><span class="kb-badge alta">Alta</span></td></tr></tbody><tfoot><tr><td colspan="4">Total (7 itens)</td><td class="kb-num">868</td><td colspan="2"></td></tr></tfoot></table></div></body></html>

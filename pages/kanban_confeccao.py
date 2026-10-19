@@ -71,14 +71,6 @@ st.markdown(
         .kb-dot.media { background: var(--kb-media); }
         .kb-dot.baixa { background: var(--kb-baixa); }
 
-        .kb-grid {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.9rem;
-            align-items: flex-start;
-            padding-bottom: 0.5rem;
-        }
-
         .kb-tab-summary {
             background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f2 100%);
             border: 1px solid #dde2ee;
@@ -90,40 +82,6 @@ st.markdown(
             font-weight: 600;
         }
         .kb-tab-summary b { color: #3d4455; }
-
-        .kb-card {
-            background: white;
-            border-radius: 10px;
-            padding: 0.85rem 0.9rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            border-left: 5px solid #9e9e9e;
-            transition: transform 0.15s ease, box-shadow 0.15s ease;
-            flex: 1 1 330px;
-            max-width: 440px;
-        }
-        .kb-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 18px rgba(0,0,0,0.14);
-        }
-        .kb-card.alta { border-left-color: var(--kb-alta); }
-        .kb-card.media { border-left-color: var(--kb-media); }
-        .kb-card.baixa { border-left-color: var(--kb-baixa); }
-
-        .kb-card-top {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 0.5rem;
-        }
-        .kb-pedido {
-            font-weight: 800;
-            font-size: 0.92rem;
-            color: #4a4f5e;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
 
         .kb-badge {
             display: inline-block;
@@ -138,73 +96,66 @@ st.markdown(
         .kb-badge.media { background: var(--kb-media); }
         .kb-badge.baixa { background: var(--kb-baixa); }
 
-        .kb-cod {
+        /* Planilha — uma linha por item */
+        .kb-sheet-wrap {
+            overflow-x: auto;
+            background: white;
+            border: 1px solid #e2e6f0;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            margin-bottom: 0.4rem;
+        }
+        table.kb-sheet {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        table.kb-sheet thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e9edf6 100%);
+            color: #5a6172;
+            text-align: left;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-weight: 800;
+            padding: 0.7rem 0.8rem;
+            border-bottom: 2px solid #d9dfec;
+            white-space: nowrap;
+        }
+        table.kb-sheet tbody td {
+            padding: 0.6rem 0.8rem;
+            border-bottom: 1px solid #eef1f7;
+            color: #3d4455;
+            vertical-align: middle;
+        }
+        table.kb-sheet tbody tr:nth-child(even) { background: #fbfcfe; }
+        table.kb-sheet tbody tr:hover { background: #f3f6fd; }
+        table.kb-sheet td.kb-num { text-align: right; font-weight: 700; white-space: nowrap; }
+        table.kb-sheet td.kb-date { white-space: nowrap; }
+        table.kb-sheet td.kb-desc-cell { min-width: 280px; }
+        table.kb-sheet td.kb-conf-cell { color: #5a6172; white-space: nowrap; }
+        table.kb-sheet tr.row-alta td:first-child { box-shadow: inset 4px 0 0 var(--kb-alta); }
+        table.kb-sheet tr.row-media td:first-child { box-shadow: inset 4px 0 0 var(--kb-media); }
+        table.kb-sheet tr.row-baixa td:first-child { box-shadow: inset 4px 0 0 var(--kb-baixa); }
+        table.kb-sheet tfoot td {
+            padding: 0.65rem 0.8rem;
+            border-top: 2px solid #d9dfec;
+            background: #f8fafd;
+            color: #3d4455;
+            font-weight: 800;
+        }
+        .kb-sheet-wrap .kb-cod {
             display: inline-block;
             background: #f0f2f8;
             border: 1px solid #dde2ee;
             color: #5a6172;
             border-radius: 6px;
-            padding: 0.15rem 0.5rem;
+            padding: 0.1rem 0.45rem;
             font-size: 0.78rem;
             font-weight: 700;
-            margin-bottom: 0.45rem;
-        }
-
-        .kb-desc {
-            font-size: 0.83rem;
-            color: #3d4455;
-            line-height: 1.35;
-            margin-bottom: 0.5rem;
-            word-break: break-word;
-        }
-
-        .kb-conf {
-            display: block;
-            font-size: 0.75rem;
-            font-weight: 700;
-            color: #667eea;
-            background: #f2f4fc;
-            border: 1px solid #dfe4f5;
-            border-radius: 6px;
-            padding: 0.18rem 0.5rem;
-            margin-bottom: 0.55rem;
-            word-break: break-word;
-        }
-
-        .kb-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-            border-top: 1px dashed #e3e6ef;
-            padding-top: 0.5rem;
-        }
-        .kb-qtd, .kb-data {
-            font-size: 0.8rem;
-            color: #5a6172;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-        .kb-qtd b { color: #3d4455; font-size: 0.9rem; }
-
-        .kb-dias {
-            margin-top: 0.4rem;
-            font-size: 0.75rem;
-            font-weight: 700;
-            border-radius: 6px;
-            padding: 0.2rem 0.5rem;
-            display: inline-block;
-        }
-        .kb-dias.alta { background: #fdecea; color: var(--kb-alta); }
-        .kb-dias.media { background: #fff4e5; color: var(--kb-media); }
-        .kb-dias.baixa { background: #e9f7ec; color: var(--kb-baixa); }
-
-        .kb-empty-col {
-            padding: 1.2rem 0.8rem;
-            text-align: center;
-            color: #9aa0b0;
-            font-size: 0.85rem;
         }
 
         .kb-info-box {
@@ -351,8 +302,8 @@ if uploaded_pedidos is None or uploaded_estoque is None:
         st.markdown("""
             1. O sistema lê o arquivo de **Estoque** e identifica todos os itens com **Saldo 2 negativo**.
             2. Esses códigos (`Cód Confec`) são usados para **filtrar os Pedidos**.
-            3. Os pedidos filtrados são **agrupados por Confecção** em colunas de um kanban.
-            4. Cada card mostra informações vindas apenas do arquivo de **Pedidos**:
+            3. Os pedidos filtrados são **agrupados por Confecção** em abas, com os itens em formato de **planilha (uma linha por item)**.
+            4. Cada linha mostra informações vindas apenas do arquivo de **Pedidos**:
                - **Pedido** (coluna `Compra`)
                - **Cód Confec**
                - **Descrição** (coluna `Confeccionado`)
@@ -476,7 +427,7 @@ st.markdown("---")
 
 # ==================== RENDERIZAÇÃO DO KANBAN ====================
 
-st.markdown("### 📌 Kanban por Confecção (abas)")
+st.markdown("### 📌 Pedidos por Confecção — planilha (uma linha por item)")
 
 if df_filtrado.empty:
     st.warning("Nenhum pedido encontrado com os filtros selecionados.")
@@ -490,41 +441,52 @@ df_filtrado = df_filtrado.sort_values(
 )
 
 
-def html_cards(df_col):
-    """Monta o HTML dos cards (kanban) de uma confecção"""
-    cards = ['<div class="kb-grid">']
+def html_sheet(df_col):
+    """Monta o HTML de uma planilha (uma linha por item) de uma confecção"""
+    linhas = []
     for _, row in df_col.iterrows():
         cls = classe_prioridade(row["Prioridade"])
-        pedido = fmt_compra(row["Compra"])
+        pedido = html.escape(fmt_compra(row["Compra"]))
         cod = html.escape(str(row["Cód Confec"]))
-        desc_full = str(row["Confeccionado"]).strip()
-        desc_curta = desc_full if len(desc_full) <= 140 else desc_full[:140] + "…"
+        desc = html.escape(str(row["Confeccionado"]).strip())
+        conf = html.escape(str(row["Confecção"]))
         qtd = fmt_num(row["Saldo"])
         data = fmt_data(row["Dt Entrega"])
         prio = html.escape(str(row["Prioridade"]))
         dias_txt = html.escape(texto_dias(row["Dt Entrega"]))
-        conf_esc = html.escape(str(row["Confecção"]))
 
-        cards.append(
-            f"""
-            <div class="kb-card {cls}">
-                <div class="kb-card-top">
-                    <span class="kb-pedido" title="Pedido {html.escape(pedido)}">🛒 Pedido {html.escape(pedido)}</span>
-                    <span class="kb-badge {cls}">{prio}</span>
-                </div>
-                <span class="kb-cod">Cód Confec: {cod}</span>
-                <div class="kb-desc" title="{html.escape(desc_full)}">{html.escape(desc_curta)}</div>
-                <span class="kb-conf">🏭 {conf_esc}</span>
-                <div class="kb-footer">
-                    <span class="kb-qtd">📦 Qtd: <b>{qtd}</b></span>
-                    <span class="kb-data">📅 {data}</span>
-                </div>
-                <span class="kb-dias {cls}">{dias_txt}</span>
-            </div>
-            """
+        linhas.append(
+            f'<tr class="row-{cls}">'
+            f'<td class="kb-pedido-cell">{pedido}</td>'
+            f'<td><span class="kb-cod">{cod}</span></td>'
+            f'<td class="kb-desc-cell">{desc}</td>'
+            f'<td class="kb-conf-cell">{conf}</td>'
+            f'<td class="kb-num">{qtd}</td>'
+            f'<td class="kb-date" title="{dias_txt}">{data}</td>'
+            f'<td><span class="kb-badge {cls}">{prio}</span></td>'
+            "</tr>"
         )
-    cards.append("</div>")
-    return "".join(cards)
+
+    return (
+        '<div class="kb-sheet-wrap">'
+        '<table class="kb-sheet">'
+        "<thead><tr>"
+        "<th>Pedido</th>"
+        "<th>Cód Confec</th>"
+        "<th>Descrição</th>"
+        "<th>Confecção</th>"
+        '<th style="text-align:right">Quantidade</th>'
+        "<th>Data de Entrega</th>"
+        "<th>Prioridade</th>"
+        "</tr></thead>"
+        "<tbody>" + "".join(linhas) + "</tbody>"
+        "<tfoot><tr>"
+        f'<td colspan="4">Total ({len(df_col)} item(ns))</td>'
+        f'<td class="kb-num">{fmt_num(df_col["Saldo"].sum())}</td>'
+        '<td colspan="2"></td>'
+        "</tr></tfoot>"
+        "</table></div>"
+    )
 
 
 # Uma aba por confecção
@@ -556,12 +518,12 @@ for aba, confeccao in zip(abas, confeccoes_abas):
         if df_col.empty:
             st.info("Nenhum pedido nesta confecção com os filtros atuais.")
         else:
-            st.markdown(html_cards(df_col), unsafe_allow_html=True)
+            st.markdown(html_sheet(df_col), unsafe_allow_html=True)
 
 # ==================== TABELA E EXPORTAÇÃO ====================
 
 st.markdown("---")
-st.markdown("### 📋 Detalhamento dos Pedidos (dados do kanban)")
+st.markdown("### 📋 Detalhamento e exportação")
 
 df_tabela = df_filtrado[["Compra", "Cód Confec", "Confeccionado", "Saldo", "Dt Entrega", "Prioridade", "Confecção"]].copy()
 df_tabela = df_tabela.rename(
@@ -570,22 +532,23 @@ df_tabela = df_tabela.rename(
         "Saldo": "Quantidade",
         "Dt Entrega": "Data de Entrega",
     }
-).sort_values(["Confecção", "Prioridade", "Data de Entrega"])
+).sort_values(["Confecção", "Data de Entrega"])
 
-st.dataframe(
-    df_tabela,
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "Pedido": st.column_config.TextColumn("Pedido", width="small"),
-        "Cód Confec": st.column_config.TextColumn("Cód Confec", width="small"),
-        "Confeccionado": st.column_config.TextColumn("Descrição", width="large"),
-        "Quantidade": st.column_config.NumberColumn("Quantidade", format="%d"),
-        "Data de Entrega": st.column_config.DateColumn("Data de Entrega", format="DD/MM/YYYY"),
-        "Prioridade": st.column_config.TextColumn("Prioridade", width="small"),
-        "Confecção": st.column_config.TextColumn("Confecção", width="large"),
-    },
-)
+with st.expander("📋 Ver tabela completa e interativa (todos os registros)"):
+    st.dataframe(
+        df_tabela,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Pedido": st.column_config.TextColumn("Pedido", width="small"),
+            "Cód Confec": st.column_config.TextColumn("Cód Confec", width="small"),
+            "Confeccionado": st.column_config.TextColumn("Descrição", width="large"),
+            "Quantidade": st.column_config.NumberColumn("Quantidade", format="%d"),
+            "Data de Entrega": st.column_config.DateColumn("Data de Entrega", format="DD/MM/YYYY"),
+            "Prioridade": st.column_config.TextColumn("Prioridade", width="small"),
+            "Confecção": st.column_config.TextColumn("Confecção", width="large"),
+        },
+    )
 
 col1, col2 = st.columns(2)
 
