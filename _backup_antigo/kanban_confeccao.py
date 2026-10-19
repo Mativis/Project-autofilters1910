@@ -1117,7 +1117,7 @@ def gerar_excel_conf(df_col, confeccao):
         0,
         1,
         6,
-        f"Itens do Estoque com Saldo 2 negativo, localizados nos Pedidos pelo Cód Confec  ·  "
+        f"Itens do Estoque localizados nos Pedidos pelo Cód Confec  ·  "
         f"Data de referência: {date.today().strftime('%d/%m/%Y')}  ·  "
         f"{n_linhas} pedido(s)  ·  {fmt_num(df_col['Saldo'].sum())} unidade(s)",
         f_subtitulo,
