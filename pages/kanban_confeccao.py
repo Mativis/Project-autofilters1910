@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import html
 import io
+import re
 import base64
 from datetime import date
 
@@ -591,39 +592,6 @@ def html_sheet(df_col):
     )
 
 
-# Uma aba por confecção
-confeccoes_abas = sorted(df_filtrado["Confecção"].unique().tolist())
-abas = st.tabs([f"🏭 {conf[:30]}" for conf in confeccoes_abas])
-
-for aba, confeccao in zip(abas, confeccoes_abas):
-    with aba:
-        df_col = df_filtrado[df_filtrado["Confecção"] == confeccao]
-        total_qtd = df_col["Saldo"].sum()
-        qtd_atrasado = int((df_col["Prioridade"] == "Atrasado").sum())
-        qtd_alta = int((df_col["Prioridade"] == "Alta").sum())
-        qtd_media = int((df_col["Prioridade"] == "Média").sum())
-        qtd_baixa = int((df_col["Prioridade"] == "Baixa").sum())
-
-        st.markdown(
-            f"""
-            <div class="kb-tab-summary">
-                🏭 <b>{html.escape(confeccao)}</b> &nbsp;·&nbsp;
-                <b>{len(df_col)}</b> pedido(s) &nbsp;·&nbsp;
-                📦 <b>{fmt_num(total_qtd)}</b> unidade(s) &nbsp;·&nbsp;
-                ⚠️ <b>{qtd_atrasado}</b> atrasado(s) &nbsp;·&nbsp;
-                🔴 <b>{qtd_alta}</b> alta(s) &nbsp;·&nbsp;
-                🟠 <b>{qtd_media}</b> média(s) &nbsp;·&nbsp;
-                🟢 <b>{qtd_baixa}</b> baixa(s)
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        if df_col.empty:
-            st.info("Nenhum pedido nesta confecção com os filtros atuais.")
-        else:
-            st.markdown(html_sheet(df_col), unsafe_allow_html=True)
-
 # ==================== IMPRESSÃO (NOVA GUIA) ====================
 
 CSS_IMPRESSAO = """
@@ -756,8 +724,12 @@ COMPONENTE_IMPRESSAO = """
 """
 
 
-def gerar_html_impressao(df_dados):
-    """Gera um documento HTML completo e autocontido, pronto para impressão"""
+def gerar_html_impressao(df_dados, incluir_resumo=True, confeccao_destaque=None):
+    """Gera um documento HTML completo e autocontido, pronto para impressão.
+
+    Com ``confeccao_destaque`` o documento fica focado em uma única confecção
+    (usado pelos botões de impressão de cada aba).
+    """
     confeccoes = sorted(df_dados["Confecção"].unique().tolist())
 
     blocos = []
@@ -857,6 +829,9 @@ def gerar_html_impressao(df_dados):
         "</section>"
     )
 
+    if not incluir_resumo or len(confeccoes) < 2:
+        resumo = ""
+
     legenda = (
         '<div class="legenda">'
         '<span class="item"><span class="dot atrasado"></span> ⚠️ Atrasado — data de entrega vencida</span>'
@@ -866,10 +841,26 @@ def gerar_html_impressao(df_dados):
         "</div>"
     )
 
+    destaque_html = (
+        f"<p><b>Confecção:</b> {html.escape(str(confeccao_destaque))}</p>"
+        if confeccao_destaque
+        else ""
+    )
+    titulo = (
+        f"Kanban de Confecção — {confeccao_destaque}"
+        if confeccao_destaque
+        else "Kanban de Confecção"
+    )
+    info_confs = (
+        ""
+        if confeccao_destaque
+        else f" · {df_dados['Confecção'].nunique()} confecção(ões)"
+    )
+
     return (
         "<!DOCTYPE html>"
         '<html lang="pt-BR"><head><meta charset="utf-8">'
-        f"<title>Kanban de Confecção — {date.today().strftime('%d/%m/%Y')}</title>"
+        f"<title>{html.escape(str(titulo))} — {date.today().strftime('%d/%m/%Y')}</title>"
         "<style>" + CSS_IMPRESSAO + "</style>"
         "</head><body>"
         '<div class="barra">'
@@ -880,9 +871,10 @@ def gerar_html_impressao(df_dados):
         '<header class="cab">'
         "<h1>📌 Kanban de Confecção — Pedidos sem Estoque</h1>"
         "<p>Itens do Estoque com <b>Saldo 2 negativo</b>, localizados nos Pedidos pelo <b>Cód Confec</b>.</p>"
-        f"<p>Data de referência: <b>{date.today().strftime('%d/%m/%Y')}</b> · "
-        f"{len(df_dados)} pedido(s) · {fmt_num(df_dados['Saldo'].sum())} unidade(s) · "
-        f"{df_dados['Confecção'].nunique()} confecção(ões)</p>"
+        + destaque_html
+        + f"<p>Data de referência: <b>{date.today().strftime('%d/%m/%Y')}</b> · "
+        f"{len(df_dados)} pedido(s) · {fmt_num(df_dados['Saldo'].sum())} unidade(s)"
+        f"{info_confs}</p>"
         "</header>"
         + legenda
         + "".join(blocos)
@@ -891,28 +883,65 @@ def gerar_html_impressao(df_dados):
     )
 
 
-st.markdown("---")
-st.markdown("### 🖨️ Impressão")
-st.caption(
-    "🖨️ **Abrir para impressão** abre o kanban (com os filtros aplicados) em uma **nova guia**, "
-    "num layout pronto para impressão (sugerido: **A4 paisagem**, com “Gráficos de plano de fundo” ativado). "
-    "Se a nova guia não abrir, use **Baixar o HTML de impressão** e abra o arquivo no navegador."
-)
-
-_html_impressao = gerar_html_impressao(df_filtrado)
-_b64_impressao = base64.b64encode(_html_impressao.encode("utf-8")).decode("ascii")
-
-col_print, col_download = st.columns([3, 2])
-with col_print:
-    st.iframe(COMPONENTE_IMPRESSAO.replace("__B64__", _b64_impressao), height=58)
-with col_download:
-    st.download_button(
-        "⬇️ Baixar o HTML de impressão",
-        data=_html_impressao,
-        file_name=f"kanban_impressao_{date.today().strftime('%Y-%m-%d')}.html",
-        mime="text/html",
-        use_container_width=True,
+def render_impressao_conf(df_dados, confeccao):
+    """Botão de impressão (nova guia) + download do HTML de UMA confecção."""
+    html_conf = gerar_html_impressao(
+        df_dados, incluir_resumo=False, confeccao_destaque=confeccao
     )
+    b64_conf = base64.b64encode(html_conf.encode("utf-8")).decode("ascii")
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", str(confeccao)).strip("_").lower()[:40] or "confeccao"
+
+    col_print, col_download = st.columns([3, 2])
+    with col_print:
+        st.iframe(COMPONENTE_IMPRESSAO.replace("__B64__", b64_conf), height=58)
+    with col_download:
+        st.download_button(
+            "⬇️ Baixar HTML desta confecção",
+            data=html_conf,
+            file_name=f"kanban_impressao_{slug}_{date.today().strftime('%Y-%m-%d')}.html",
+            mime="text/html",
+            use_container_width=True,
+            key=f"dl_html_{slug}",
+        )
+
+
+# Uma aba por confecção
+confeccoes_abas = sorted(df_filtrado["Confecção"].unique().tolist())
+abas = st.tabs([f"🏭 {conf[:30]}" for conf in confeccoes_abas])
+
+for aba, confeccao in zip(abas, confeccoes_abas):
+    with aba:
+        df_col = df_filtrado[df_filtrado["Confecção"] == confeccao]
+        total_qtd = df_col["Saldo"].sum()
+        qtd_atrasado = int((df_col["Prioridade"] == "Atrasado").sum())
+        qtd_alta = int((df_col["Prioridade"] == "Alta").sum())
+        qtd_media = int((df_col["Prioridade"] == "Média").sum())
+        qtd_baixa = int((df_col["Prioridade"] == "Baixa").sum())
+
+        st.markdown(
+            f"""
+            <div class="kb-tab-summary">
+                🏭 <b>{html.escape(confeccao)}</b> &nbsp;·&nbsp;
+                <b>{len(df_col)}</b> pedido(s) &nbsp;·&nbsp;
+                📦 <b>{fmt_num(total_qtd)}</b> unidade(s) &nbsp;·&nbsp;
+                ⚠️ <b>{qtd_atrasado}</b> atrasado(s) &nbsp;·&nbsp;
+                🔴 <b>{qtd_alta}</b> alta(s) &nbsp;·&nbsp;
+                🟠 <b>{qtd_media}</b> média(s) &nbsp;·&nbsp;
+                🟢 <b>{qtd_baixa}</b> baixa(s)
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if df_col.empty:
+            st.info("Nenhum pedido nesta confecção com os filtros atuais.")
+        else:
+            render_impressao_conf(df_col, confeccao)
+            st.caption(
+                "🖨️ A nova guia abre pronta para impressão e contém **somente esta confecção** "
+                "(sugerido: **A4 paisagem**, com “Gráficos de plano de fundo” ativado)."
+            )
+            st.markdown(html_sheet(df_col), unsafe_allow_html=True)
 
 # ==================== TABELA E EXPORTAÇÃO ====================
 
