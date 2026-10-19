@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import html
 import io
+import base64
 from datetime import date
 
 # Configurar página
@@ -622,6 +623,296 @@ for aba, confeccao in zip(abas, confeccoes_abas):
             st.info("Nenhum pedido nesta confecção com os filtros atuais.")
         else:
             st.markdown(html_sheet(df_col), unsafe_allow_html=True)
+
+# ==================== IMPRESSÃO (NOVA GUIA) ====================
+
+CSS_IMPRESSAO = """
+    @page { size: A4 landscape; margin: 10mm; }
+    * { box-sizing: border-box; }
+    body {
+        font-family: "Segoe UI", Roboto, Arial, sans-serif;
+        color: #1f2430;
+        background: #eef1f6;
+        margin: 0;
+        padding: 18px;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .barra {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+        background: #ffffff;
+        border: 1px solid #dfe4f0;
+        border-radius: 10px;
+        padding: 10px 14px;
+        margin-bottom: 18px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.07);
+    }
+    .botao {
+        border: 0;
+        cursor: pointer;
+        border-radius: 8px;
+        padding: 10px 18px;
+        font-size: 14px;
+        font-weight: 700;
+        color: #ffffff;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .dica { font-size: 12px; color: #5a6172; }
+    .cab { margin-bottom: 14px; }
+    .cab h1 { font-size: 20px; margin: 0 0 4px 0; }
+    .cab p { margin: 2px 0; font-size: 12px; color: #5a6172; }
+    .legenda { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; font-size: 12px; font-weight: 600; }
+    .legenda .item { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .dot.atrasado { background: #b71c1c; }
+    .dot.alta { background: #f44336; }
+    .dot.media { background: #ff9800; }
+    .dot.baixa { background: #4caf50; }
+    .bloco {
+        background: #ffffff;
+        border: 1px solid #dfe4f0;
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin-bottom: 18px;
+    }
+    .bloco h2 { font-size: 15px; margin: 0 0 2px 0; }
+    .bloco h2 .cont { font-size: 12px; font-weight: 600; color: #5a6172; }
+    .resumo-linha { margin: 0 0 10px 0; font-size: 12px; color: #3d4455; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #d9dfec; padding: 5px 7px; font-size: 11px; text-align: left; vertical-align: top; }
+    th {
+        background: #f2f5fa;
+        color: #5a6172;
+        font-size: 9.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    th.num-h, td.num { text-align: right; }
+    td.num { font-weight: 700; white-space: nowrap; }
+    td.dt { white-space: nowrap; }
+    td.conf { white-space: nowrap; }
+    td.desc { min-width: 220px; }
+    .dias { display: block; font-size: 9.5px; font-weight: 600; color: #7a8194; }
+    .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 20px;
+        font-size: 10px;
+        font-weight: 700;
+        color: #ffffff;
+        white-space: nowrap;
+    }
+    .badge.atrasado { background: #b71c1c; }
+    .badge.alta { background: #f44336; }
+    .badge.media { background: #ff9800; }
+    .badge.baixa { background: #4caf50; }
+    tfoot td { font-weight: 800; background: #f8fafd; }
+    @media print {
+        body { background: #ffffff; padding: 0; }
+        .barra { display: none; }
+        .bloco { border: 0; border-radius: 0; padding: 0; margin: 0 0 14px 0; }
+        .bloco + .bloco { break-before: page; page-break-before: always; }
+        .bloco, table, tr, td, th { break-inside: avoid; page-break-inside: avoid; }
+        thead { display: table-header-group; }
+    }
+"""
+
+COMPONENTE_IMPRESSAO = """
+<style>
+    html, body { margin: 0; padding: 0; background: transparent; }
+</style>
+<a id="kb-abrir-impressao" href="#" target="_blank" rel="noopener" style="
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    cursor: pointer;
+    border-radius: 8px;
+    padding: 0.55rem 1rem;
+    text-align: center;
+    text-decoration: none;
+    font-family: 'Segoe UI', Roboto, sans-serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #ffffff;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    box-shadow: 0 2px 10px rgba(102, 126, 234, 0.35);">
+    🖨️ Abrir para impressão (nova guia)
+</a>
+<script>
+    (function () {
+        const KB_B64 = "__B64__";
+        const bin = atob(KB_B64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const documento = new TextDecoder("utf-8").decode(bytes);
+        const url = URL.createObjectURL(new Blob([documento], { type: "text/html;charset=utf-8" }));
+        /* Link de verdade (target=_blank): não sofre bloqueio de pop-up. */
+        document.getElementById("kb-abrir-impressao").href = url;
+    })();
+</script>
+"""
+
+
+def gerar_html_impressao(df_dados):
+    """Gera um documento HTML completo e autocontido, pronto para impressão"""
+    confeccoes = sorted(df_dados["Confecção"].unique().tolist())
+
+    blocos = []
+    linhas_resumo = []
+
+    for conf in confeccoes:
+        d = df_dados[df_dados["Confecção"] == conf]
+        conf_esc = html.escape(str(conf))
+        contagem = d["Prioridade"].value_counts()
+        n_atrasado = int(contagem.get("Atrasado", 0))
+        n_alta = int(contagem.get("Alta", 0))
+        n_media = int(contagem.get("Média", 0))
+        n_baixa = int(contagem.get("Baixa", 0))
+        total_un = fmt_num(d["Saldo"].sum())
+
+        linhas = []
+        for _, row in d.iterrows():
+            prio_val = str(row["Prioridade"])
+            cls = classe_prioridade(prio_val)
+            prio_txt = html.escape(("⚠️ " if prio_val == "Atrasado" else "") + prio_val)
+            linhas.append(
+                "<tr>"
+                f'<td>{html.escape(fmt_compra(row["Compra"]))}</td>'
+                f'<td>{html.escape(str(row["Cód Confec"]))}</td>'
+                f'<td class="desc">{html.escape(str(row["Confeccionado"]))}</td>'
+                f'<td class="conf">{conf_esc}</td>'
+                f'<td class="num">{fmt_num(row["Saldo"])}</td>'
+                f'<td class="dt">{fmt_data(row["Dt Entrega"])}'
+                f'<span class="dias">{html.escape(texto_dias(row["Dt Entrega"]))}</span></td>'
+                f'<td><span class="badge {cls}">{prio_txt}</span></td>'
+                "</tr>"
+            )
+
+        tabela = (
+            "<table>"
+            "<thead><tr>"
+            "<th>Pedido</th><th>Cód Confec</th><th>Descrição</th><th>Confecção</th>"
+            '<th class="num-h">Quantidade</th><th>Data de Entrega</th><th>Prioridade</th>'
+            "</tr></thead>"
+            "<tbody>" + "".join(linhas) + "</tbody>"
+            "<tfoot><tr>"
+            f'<td colspan="4">Total ({len(d)} item(ns))</td>'
+            f'<td class="num">{total_un}</td>'
+            '<td colspan="2"></td>'
+            "</tr></tfoot>"
+            "</table>"
+        )
+
+        blocos.append(
+            '<section class="bloco">'
+            f'<h2>🏭 {conf_esc} <span class="cont">({len(d)} pedido(s) · {total_un} unidade(s))</span></h2>'
+            '<p class="resumo-linha">'
+            f'⚠️ Atrasado: <b>{n_atrasado}</b> &nbsp;·&nbsp; 🔴 Alta: <b>{n_alta}</b> '
+            f'&nbsp;·&nbsp; 🟠 Média: <b>{n_media}</b> &nbsp;·&nbsp; 🟢 Baixa: <b>{n_baixa}</b>'
+            "</p>"
+            + tabela
+            + "</section>"
+        )
+
+        linhas_resumo.append(
+            "<tr>"
+            f"<td>{conf_esc}</td>"
+            f'<td class="num">{len(d)}</td>'
+            f'<td class="num">{total_un}</td>'
+            f'<td class="num">{n_atrasado}</td>'
+            f'<td class="num">{n_alta}</td>'
+            f'<td class="num">{n_media}</td>'
+            f'<td class="num">{n_baixa}</td>'
+            "</tr>"
+        )
+
+    total_prio = df_dados["Prioridade"].value_counts()
+    resumo = (
+        '<section class="bloco">'
+        "<h2>Resumo geral por confecção</h2>"
+        "<table>"
+        "<thead><tr>"
+        "<th>Confecção</th>"
+        '<th class="num-h">Pedidos</th>'
+        '<th class="num-h">Unidades</th>'
+        '<th class="num-h">⚠️ Atrasado</th>'
+        '<th class="num-h">🔴 Alta</th>'
+        '<th class="num-h">🟠 Média</th>'
+        '<th class="num-h">🟢 Baixa</th>'
+        "</tr></thead>"
+        "<tbody>" + "".join(linhas_resumo) + "</tbody>"
+        "<tfoot><tr>"
+        "<td>TOTAL</td>"
+        f'<td class="num">{len(df_dados)}</td>'
+        f'<td class="num">{fmt_num(df_dados["Saldo"].sum())}</td>'
+        f'<td class="num">{int(total_prio.get("Atrasado", 0))}</td>'
+        f'<td class="num">{int(total_prio.get("Alta", 0))}</td>'
+        f'<td class="num">{int(total_prio.get("Média", 0))}</td>'
+        f'<td class="num">{int(total_prio.get("Baixa", 0))}</td>'
+        "</tr></tfoot>"
+        "</table>"
+        "</section>"
+    )
+
+    legenda = (
+        '<div class="legenda">'
+        '<span class="item"><span class="dot atrasado"></span> ⚠️ Atrasado — data de entrega vencida</span>'
+        '<span class="item"><span class="dot alta"></span> 🔴 Alta — entrega em até 15 dias</span>'
+        '<span class="item"><span class="dot media"></span> 🟠 Média — entrega em 16 a 30 dias</span>'
+        '<span class="item"><span class="dot baixa"></span> 🟢 Baixa — entrega em mais de 1 mês</span>'
+        "</div>"
+    )
+
+    return (
+        "<!DOCTYPE html>"
+        '<html lang="pt-BR"><head><meta charset="utf-8">'
+        f"<title>Kanban de Confecção — {date.today().strftime('%d/%m/%Y')}</title>"
+        "<style>" + CSS_IMPRESSAO + "</style>"
+        "</head><body>"
+        '<div class="barra">'
+        '<button class="botao" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>'
+        '<span class="dica">Dica: em “Mais definições”, escolha <b>Paisagem</b> e marque '
+        "<b>Gráficos de plano de fundo</b> para sair com as cores.</span>"
+        "</div>"
+        '<header class="cab">'
+        "<h1>📌 Kanban de Confecção — Pedidos sem Estoque</h1>"
+        "<p>Itens do Estoque com <b>Saldo 2 negativo</b>, localizados nos Pedidos pelo <b>Cód Confec</b>.</p>"
+        f"<p>Data de referência: <b>{date.today().strftime('%d/%m/%Y')}</b> · "
+        f"{len(df_dados)} pedido(s) · {fmt_num(df_dados['Saldo'].sum())} unidade(s) · "
+        f"{df_dados['Confecção'].nunique()} confecção(ões)</p>"
+        "</header>"
+        + legenda
+        + "".join(blocos)
+        + resumo
+        + "</body></html>"
+    )
+
+
+st.markdown("---")
+st.markdown("### 🖨️ Impressão")
+st.caption(
+    "🖨️ **Abrir para impressão** abre o kanban (com os filtros aplicados) em uma **nova guia**, "
+    "num layout pronto para impressão (sugerido: **A4 paisagem**, com “Gráficos de plano de fundo” ativado). "
+    "Se a nova guia não abrir, use **Baixar o HTML de impressão** e abra o arquivo no navegador."
+)
+
+_html_impressao = gerar_html_impressao(df_filtrado)
+_b64_impressao = base64.b64encode(_html_impressao.encode("utf-8")).decode("ascii")
+
+col_print, col_download = st.columns([3, 2])
+with col_print:
+    st.iframe(COMPONENTE_IMPRESSAO.replace("__B64__", _b64_impressao), height=58)
+with col_download:
+    st.download_button(
+        "⬇️ Baixar o HTML de impressão",
+        data=_html_impressao,
+        file_name=f"kanban_impressao_{date.today().strftime('%Y-%m-%d')}.html",
+        mime="text/html",
+        use_container_width=True,
+    )
 
 # ==================== TABELA E EXPORTAÇÃO ====================
 
