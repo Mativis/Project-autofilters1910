@@ -5,6 +5,7 @@ import html
 import io
 import re
 import base64
+import xlsxwriter
 from datetime import date
 
 # Configurar página
@@ -528,7 +529,7 @@ st.markdown("---")
 
 # ==================== RENDERIZAÇÃO DO KANBAN ====================
 
-st.markdown("### 📌 Pedidos por Confecção — planilha (uma linha por item)")
+st.markdown("### 📌 Pedidos por Confecção ")
 
 if df_filtrado.empty:
     st.warning("Nenhum pedido encontrado com os filtros selecionados.")
@@ -881,25 +882,364 @@ def gerar_html_impressao(df_dados, incluir_resumo=True, confeccao_destaque=None)
     )
 
 
-def render_impressao_conf(df_dados, confeccao):
-    """Botão de impressão (nova guia) + download do HTML de UMA confecção."""
+# ==================== EXPORTAÇÃO EXCEL FORMATADA (POR CONFECÇÃO) ====================
+
+CORES_PRIORIDADE = {
+    "Atrasado": "#b71c1c",
+    "Alta": "#f44336",
+    "Média": "#ff9800",
+    "Baixa": "#4caf50",
+}
+
+
+def _nome_aba(confeccao):
+    """Nome de aba válido no Excel (sem caracteres proibidos, até 31 chars)."""
+    nome = re.sub(r"[\[\]\*\?/\\:]", " ", str(confeccao)).strip()
+    nome = re.sub(r"\s+", " ", nome)
+    return (nome or "Kanban")[:31]
+
+
+def gerar_excel_conf(df_col, confeccao):
+    """Gera um .xlsx formatado, o mais próximo possível da visualização em tela."""
+    C_PRIMARIA = "#667eea"
+    C_BORDA = "#d9dfec"
+    C_BORDA_SOFT = "#eef1f7"
+    C_HEAD_BG = "#eef1f7"
+    C_ROW_ALT = "#fbfcfe"
+    C_TEXT = "#3d4455"
+    C_TEXT_SOFT = "#5a6172"
+    C_TOTAL_BG = "#f0f2f8"
+
+    linhas = list(df_col.iterrows())
+    n_linhas = len(linhas)
+
+    buffer = io.BytesIO()
+    workbook = xlsxwriter.Workbook(buffer, {"in_memory": True})
+    workbook.set_properties(
+        {
+            "title": f"Kanban de Confecção — {confeccao}",
+            "subject": "Pedidos sem estoque (Estoque com Saldo 2 negativo)",
+            "author": "Kanban de Confecção",
+            "comments": f"Gerado em {date.today().strftime('%d/%m/%Y')}",
+        }
+    )
+    ws = workbook.add_worksheet(_nome_aba(confeccao))
+
+    # ---------- Formatos ----------
+    def base(bg, extra=None):
+        props = {
+            "font_name": "Calibri",
+            "font_size": 10,
+            "font_color": C_TEXT,
+            "bg_color": bg,
+            "valign": "vcenter",
+            "border": 1,
+            "border_color": C_BORDA_SOFT,
+        }
+        if extra:
+            props.update(extra)
+        return workbook.add_format(props)
+
+    f_titulo = workbook.add_format(
+        {
+            "font_name": "Calibri",
+            "bold": True,
+            "font_size": 15,
+            "font_color": "#ffffff",
+            "bg_color": C_PRIMARIA,
+            "align": "left",
+            "valign": "vcenter",
+            "indent": 1,
+        }
+    )
+    f_subtitulo = workbook.add_format(
+        {
+            "font_name": "Calibri",
+            "font_size": 10,
+            "font_color": C_TEXT_SOFT,
+            "bg_color": C_HEAD_BG,
+            "align": "left",
+            "valign": "vcenter",
+            "indent": 1,
+        }
+    )
+    f_legenda_prio = {
+        p: workbook.add_format(
+            {"font_name": "Calibri", "bold": True, "font_size": 10, "font_color": cor}
+        )
+        for p, cor in CORES_PRIORIDADE.items()
+    }
+    f_legenda_celula = workbook.add_format({"font_name": "Calibri"})
+
+    f_head = workbook.add_format(
+        {
+            "font_name": "Calibri",
+            "bold": True,
+            "font_size": 9,
+            "font_color": C_TEXT_SOFT,
+            "bg_color": C_HEAD_BG,
+            "align": "left",
+            "valign": "vcenter",
+            "border": 1,
+            "border_color": C_BORDA,
+            "bottom": 2,
+            "bottom_color": C_BORDA,
+        }
+    )
+    f_head_centro = workbook.add_format(
+        {
+            "font_name": "Calibri",
+            "bold": True,
+            "font_size": 9,
+            "font_color": C_TEXT_SOFT,
+            "bg_color": C_HEAD_BG,
+            "align": "center",
+            "valign": "vcenter",
+            "border": 1,
+            "border_color": C_BORDA,
+            "bottom": 2,
+            "bottom_color": C_BORDA,
+        }
+    )
+    f_head_dir = workbook.add_format(
+        {
+            "font_name": "Calibri",
+            "bold": True,
+            "font_size": 9,
+            "font_color": C_TEXT_SOFT,
+            "bg_color": C_HEAD_BG,
+            "align": "right",
+            "valign": "vcenter",
+            "border": 1,
+            "border_color": C_BORDA,
+            "bottom": 2,
+            "bottom_color": C_BORDA,
+        }
+    )
+
+    f_celula = base("#ffffff")
+    f_celula_alt = base(C_ROW_ALT)
+    f_celula_cod = base("#ffffff", {"align": "center", "font_color": C_TEXT_SOFT})
+    f_celula_cod_alt = base(C_ROW_ALT, {"align": "center", "font_color": C_TEXT_SOFT})
+    f_celula_conf = base("#ffffff", {"font_color": C_TEXT_SOFT})
+    f_celula_conf_alt = base(C_ROW_ALT, {"font_color": C_TEXT_SOFT})
+    f_celula_num = base("#ffffff", {"align": "right", "bold": True, "num_format": "#,##0"})
+    f_celula_num_alt = base(C_ROW_ALT, {"align": "right", "bold": True, "num_format": "#,##0"})
+    f_celula_data = base("#ffffff", {"align": "center", "num_format": "DD/MM/YYYY"})
+    f_celula_data_alt = base(C_ROW_ALT, {"align": "center", "num_format": "DD/MM/YYYY"})
+    f_celula_data_atraso = base(
+        "#ffffff",
+        {"align": "center", "num_format": "DD/MM/YYYY", "bold": True, "font_color": CORES_PRIORIDADE["Atrasado"]},
+    )
+    f_celula_data_atraso_alt = base(
+        C_ROW_ALT,
+        {"align": "center", "num_format": "DD/MM/YYYY", "bold": True, "font_color": CORES_PRIORIDADE["Atrasado"]},
+    )
+    f_pedido = {
+        p: (
+            base("#ffffff", {"left": 5, "left_color": cor}),
+            base(C_ROW_ALT, {"left": 5, "left_color": cor}),
+        )
+        for p, cor in CORES_PRIORIDADE.items()
+    }
+    f_badge = {
+        p: workbook.add_format(
+            {
+                "font_name": "Calibri",
+                "bold": True,
+                "font_size": 10,
+                "font_color": "#ffffff",
+                "bg_color": cor,
+                "align": "center",
+                "valign": "vcenter",
+                "border": 1,
+                "border_color": C_BORDA_SOFT,
+            }
+        )
+        for p, cor in CORES_PRIORIDADE.items()
+    }
+
+    f_total_rotulo = workbook.add_format(
+        {
+            "font_name": "Calibri",
+            "bold": True,
+            "font_size": 10,
+            "font_color": C_TEXT,
+            "bg_color": C_TOTAL_BG,
+            "align": "left",
+            "valign": "vcenter",
+            "border": 1,
+            "border_color": C_BORDA_SOFT,
+            "top": 2,
+            "top_color": C_BORDA,
+            "indent": 1,
+        }
+    )
+    f_total_num = workbook.add_format(
+        {
+            "font_name": "Calibri",
+            "bold": True,
+            "font_size": 10,
+            "font_color": C_TEXT,
+            "bg_color": C_TOTAL_BG,
+            "align": "right",
+            "valign": "vcenter",
+            "num_format": "#,##0",
+            "border": 1,
+            "border_color": C_BORDA_SOFT,
+            "top": 2,
+            "top_color": C_BORDA,
+        }
+    )
+    f_total_vazio = workbook.add_format(
+        {
+            "font_name": "Calibri",
+            "bg_color": C_TOTAL_BG,
+            "border": 1,
+            "border_color": C_BORDA_SOFT,
+            "top": 2,
+            "top_color": C_BORDA,
+        }
+    )
+
+    # ---------- Colunas ----------
+    larguras = [(0, 0, 13), (1, 1, 12), (2, 2, 52), (3, 3, 34), (4, 4, 12), (5, 5, 16), (6, 6, 14)]
+    for ini, fim, larg in larguras:
+        ws.set_column(ini, fim, larg)
+
+    # ---------- Cabeçalho da folha ----------
+    ws.set_row(0, 30)
+    ws.merge_range(0, 0, 0, 6, f"📌 Kanban de Confecção — {confeccao}", f_titulo)
+
+    ws.set_row(1, 18)
+    ws.merge_range(
+        1,
+        0,
+        1,
+        6,
+        f"Itens do Estoque com Saldo 2 negativo, localizados nos Pedidos pelo Cód Confec  ·  "
+        f"Data de referência: {date.today().strftime('%d/%m/%Y')}  ·  "
+        f"{n_linhas} pedido(s)  ·  {fmt_num(df_col['Saldo'].sum())} unidade(s)",
+        f_subtitulo,
+    )
+
+    ws.set_row(2, 18)
+    contagem = df_col["Prioridade"].value_counts()
+    legenda = ["Prioridade:"]
+    for prio in ["Atrasado", "Alta", "Média", "Baixa"]:
+        prefixo = "⚠️ " if prio == "Atrasado" else ""
+        # No xlsxwriter o formato vale para o texto seguinte; a lista deve
+        # terminar em texto (nunca em formato).
+        legenda += [f_legenda_prio[prio], f"   {prefixo}{prio}: {int(contagem.get(prio, 0))}"]
+    ws.write_rich_string(2, 0, *legenda, f_legenda_celula)
+
+    ws.set_row(3, 6)
+
+    # ---------- Cabeçalho da tabela ----------
+    linha_head = 4
+    ws.set_row(linha_head, 22)
+    ws.write(linha_head, 0, "PEDIDO", f_head)
+    ws.write(linha_head, 1, "CÓD CONFEC", f_head_centro)
+    ws.write(linha_head, 2, "DESCRIÇÃO", f_head)
+    ws.write(linha_head, 3, "CONFECÇÃO", f_head)
+    ws.write(linha_head, 4, "QUANTIDADE", f_head_dir)
+    ws.write(linha_head, 5, "DATA DE ENTREGA", f_head_centro)
+    ws.write(linha_head, 6, "PRIORIDADE", f_head_centro)
+
+    # ---------- Linhas ----------
+    for i, (_, row) in enumerate(linhas):
+        r = linha_head + 1 + i
+        alt = i % 2 == 1
+        prio = str(row["Prioridade"]).strip()
+        prio = prio if prio in CORES_PRIORIDADE else "Baixa"
+        ws.set_row(r, 20)
+
+        f_ped, f_ped_alt = f_pedido[prio]
+        compra = row["Compra"]
+        try:
+            num = float(compra)
+            valor_pedido = int(num) if num == int(num) else num
+        except (TypeError, ValueError):
+            valor_pedido = fmt_compra(compra)
+        ws.write(r, 0, valor_pedido, f_ped_alt if alt else f_ped)
+
+        cod = str(row["Cód Confec"]).strip()
+        valor_cod = int(cod) if cod.isdigit() else cod
+        ws.write(r, 1, valor_cod, f_celula_cod_alt if alt else f_celula_cod)
+
+        ws.write(r, 2, str(row["Confeccionado"]).strip(), f_celula_alt if alt else f_celula)
+        ws.write(r, 3, str(row["Confecção"]).strip(), f_celula_conf_alt if alt else f_celula_conf)
+        ws.write(r, 4, float(row["Saldo"]), f_celula_num_alt if alt else f_celula_num)
+
+        dt = row["Dt Entrega"]
+        if pd.isna(dt):
+            ws.write(r, 5, "—", f_celula_data_alt if alt else f_celula_data)
+        else:
+            atrasado = prio == "Atrasado"
+            if atrasado:
+                fmt_data_cell = f_celula_data_atraso_alt if alt else f_celula_data_atraso
+            else:
+                fmt_data_cell = f_celula_data_alt if alt else f_celula_data
+            ws.write_datetime(r, 5, pd.Timestamp(dt).to_pydatetime(), fmt_data_cell)
+
+        texto_prio = ("⚠️ " if prio == "Atrasado" else "") + prio
+        ws.write(r, 6, texto_prio, f_badge[prio])
+
+    # ---------- Total ----------
+    linha_total = linha_head + 1 + n_linhas
+    ws.set_row(linha_total, 22)
+    ws.merge_range(
+        linha_total, 0, linha_total, 3, f"Total — {n_linhas} item(ns)", f_total_rotulo
+    )
+    ws.write_number(linha_total, 4, float(df_col["Saldo"].sum()), f_total_num)
+    ws.merge_range(linha_total, 5, linha_total, 6, "", f_total_vazio)
+
+    # ---------- Aparência / impressão ----------
+    ws.autofilter(linha_head, 0, linha_total - 1, 6)
+    ws.freeze_panes(linha_head + 1, 0)
+    ws.hide_gridlines(2)
+    ws.set_landscape()
+    ws.set_paper(9)
+    ws.fit_to_pages(1, 0)
+    ws.repeat_rows(linha_head)
+    ws.set_margins(0.4, 0.4, 0.5, 0.4)
+    ws.print_area(0, 0, linha_total, 6)
+    ws.set_zoom(90)
+
+    workbook.close()
+    return buffer.getvalue()
+
+
+def render_acoes_conf(df_dados, confeccao):
+    """Ações de UMA confecção: imprimir (nova guia), baixar HTML e baixar Excel."""
     html_conf = gerar_html_impressao(
         df_dados, incluir_resumo=False, confeccao_destaque=confeccao
     )
     b64_conf = base64.b64encode(html_conf.encode("utf-8")).decode("ascii")
+    excel_conf = gerar_excel_conf(df_dados, confeccao)
     slug = re.sub(r"[^A-Za-z0-9]+", "_", str(confeccao)).strip("_").lower()[:40] or "confeccao"
+    hoje = date.today().strftime("%Y-%m-%d")
 
-    col_print, col_download = st.columns([3, 2])
+    col_print, col_html, col_excel = st.columns([3, 2, 2])
     with col_print:
         st.iframe(COMPONENTE_IMPRESSAO.replace("__B64__", b64_conf), height=58)
-    with col_download:
+    with col_html:
         st.download_button(
-            "⬇️ Baixar HTML desta confecção",
+            "⬇️ Baixar HTML",
             data=html_conf,
-            file_name=f"kanban_impressao_{slug}_{date.today().strftime('%Y-%m-%d')}.html",
+            file_name=f"kanban_impressao_{slug}_{hoje}.html",
             mime="text/html",
             use_container_width=True,
             key=f"dl_html_{slug}",
+        )
+    with col_excel:
+        st.download_button(
+            "📊 Baixar Excel (.xlsx)",
+            data=excel_conf,
+            file_name=f"kanban_confeccao_{slug}_{hoje}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key=f"dl_excel_{slug}",
         )
 
 
@@ -934,10 +1274,11 @@ for aba, confeccao in zip(abas, confeccoes_abas):
         if df_col.empty:
             st.info("Nenhum pedido nesta confecção com os filtros atuais.")
         else:
-            render_impressao_conf(df_col, confeccao)
+            render_acoes_conf(df_col, confeccao)
             st.caption(
                 "🖨️ A nova guia abre pronta para impressão e contém **somente esta confecção** "
-                "(sugerido: **A4 paisagem**, com “Gráficos de plano de fundo” ativado)."
+                "(sugerido: **A4 paisagem**, com “Gráficos de plano de fundo” ativado). "
+                "📊 O Excel sai com a mesma formatação visual da tela (uma aba, filtros e cores por prioridade)."
             )
             st.markdown(html_sheet(df_col), unsafe_allow_html=True)
 
