@@ -333,8 +333,7 @@ def fmt_data(valor):
 st.markdown(
     """
     <div class="kb-header">
-        <h1>📌 Kanban de Confecção — Pedidos sem Estoque</h1>
-        <p>Itens do Estoque com <b>Saldo 2 negativo</b>, localizados nos Pedidos pelo <b>Cód Confec</b> e agrupados por confecção</p>
+        <h1>📌 Kanban de Confecção </h1>
     </div>
     """,
     unsafe_allow_html=True,
@@ -869,8 +868,7 @@ def gerar_html_impressao(df_dados, incluir_resumo=True, confeccao_destaque=None)
         "<b>Gráficos de plano de fundo</b> para sair com as cores.</span>"
         "</div>"
         '<header class="cab">'
-        "<h1>📌 Kanban de Confecção — Pedidos sem Estoque</h1>"
-        "<p>Itens do Estoque com <b>Saldo 2 negativo</b>, localizados nos Pedidos pelo <b>Cód Confec</b>.</p>"
+        "<h1>📌 Kanban de Confecção </h1>"
         + destaque_html
         + f"<p>Data de referência: <b>{date.today().strftime('%d/%m/%Y')}</b> · "
         f"{len(df_dados)} pedido(s) · {fmt_num(df_dados['Saldo'].sum())} unidade(s)"
