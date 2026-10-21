@@ -15,11 +15,13 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from nucleo import (
+    CORES_PRIORIDADE,
     aplicar_estilo_comum,
     cabecalho,
     card,
     codigos_saldo2_negativo,
     cores_grafico,
+    fmt_data,
     fmt_num,
     fmt_pct,
     preparar_estoque,
@@ -52,8 +54,8 @@ df_estoque = preparar_estoque(df_estoque) if df_estoque is not None else None
 
 cabecalho(
     "📊 Dashboards de Pedidos",
-    "Concentração de marca e de código, volume de pedidos e eficácia (Saldo ÷ Qtd) — "
-    f"data de referência: {date.today().strftime('%d/%m/%Y')}",
+    "Concentração de marca e de código, volume de pedidos, eficácia (Saldo ÷ Qtd) "
+    f"e detalhamento por confecção — data de referência: {date.today().strftime('%d/%m/%Y')}",
 )
 
 # ==================== FILTROS ====================
@@ -352,11 +354,24 @@ with col_d:
 
 df_conf = (
     df.groupby("Confecção")
-    .agg(Pedidos=("Compra", "count"), Qtd=("Qtd", "sum"), Saldo=("Saldo", "sum"))
+    .agg(
+        Pedidos=("Compra", "count"),
+        Códigos=("Cód Confec_norm", "nunique"),
+        Marcas=("Marca", "nunique"),
+        Qtd=("Qtd", "sum"),
+        Saldo=("Saldo", "sum"),
+        Atrasados=("Prioridade", lambda serie: int((serie == "Atrasado").sum())),
+        PróximaEntrega=("Dt Entrega", "min"),
+    )
     .reset_index()
     .sort_values("Qtd", ascending=False)
+    .reset_index(drop=True)
 )
+df_conf["Entregue"] = df_conf["Qtd"] - df_conf["Saldo"]
 df_conf["Eficácia"] = np.where(df_conf["Qtd"] > 0, df_conf["Saldo"] / df_conf["Qtd"], np.nan)
+df_conf["% do volume"] = (
+    df_conf["Qtd"] / df_conf["Qtd"].sum() if df_conf["Qtd"].sum() else 0
+)
 
 fig = px.bar(
     df_conf.head(top_n).sort_values("Qtd"),
@@ -471,16 +486,319 @@ fig = px.bar(
 fig.update_layout(height=430, coloraxis_showscale=False, margin=dict(t=50, l=10, r=10, b=10))
 st.plotly_chart(fig, width="stretch")
 
+# ==================== 5. DETALHAMENTO POR CONFECÇÃO ====================
+
+st.markdown('<div class="db-secao">🏭 Detalhamento por confecção</div>', unsafe_allow_html=True)
+
+st.caption(
+    "Primeiro o comparativo entre todas as confecções do filtro atual; "
+    "abaixo, o detalhe da confecção selecionada."
+)
+
+# --- 5.1 Comparativo entre confecções ---
+_conf_ord = df_conf.sort_values("Qtd")
+
+fig = go.Figure()
+fig.add_bar(
+    y=_conf_ord["Confecção"],
+    x=_conf_ord["Entregue"],
+    name="Entregue (Qtd − Saldo)",
+    orientation="h",
+    marker_color="#2e7d32",
+    hovertemplate="%{y}<br>Entregue: %{x:,.0f}<extra></extra>",
+)
+fig.add_bar(
+    y=_conf_ord["Confecção"],
+    x=_conf_ord["Saldo"],
+    name="Saldo em aberto",
+    orientation="h",
+    marker_color="#ff9800",
+    hovertemplate="%{y}<br>Saldo em aberto: %{x:,.0f}<extra></extra>",
+)
+fig.update_layout(
+    template=template_plotly(),
+    height=max(240, 46 * len(_conf_ord) + 100),
+    barmode="stack",
+    title="Volume por confecção — entregue × saldo em aberto",
+    xaxis_title="Unidades",
+    legend=dict(orientation="h", y=1.12),
+    margin=dict(t=60, l=10, r=10, b=10),
+)
+st.plotly_chart(fig, width="stretch")
+
+_conf_tab = df_conf.copy()
+_conf_tab["Próxima entrega"] = _conf_tab["PróximaEntrega"].map(fmt_data)
+
+st.dataframe(
+    _conf_tab[
+        [
+            "Confecção",
+            "Pedidos",
+            "Códigos",
+            "Marcas",
+            "Qtd",
+            "Entregue",
+            "Saldo",
+            "Eficácia",
+            "% do volume",
+            "Atrasados",
+            "Próxima entrega",
+        ]
+    ].style.format(
+        {
+            "Eficácia": "{:.1%}",
+            "% do volume": "{:.1%}",
+            "Qtd": "{:,.0f}",
+            "Entregue": "{:,.0f}",
+            "Saldo": "{:,.0f}",
+        }
+    ),
+    width="stretch",
+    hide_index=True,
+)
+
+# --- 5.2 Detalhe da confecção selecionada ---
+st.markdown("#### 🔎 Detalhe por confecção")
+
+conf_sel = st.selectbox(
+    "Confecção",
+    options=df_conf["Confecção"].tolist(),
+    index=0,
+    help="Selecione a confecção para ver os indicadores e os gráficos detalhados.",
+)
+
+dfc = df[df["Confecção"] == conf_sel].copy()
+
+d_qtd = dfc["Qtd"].sum(min_count=1)
+d_saldo = dfc["Saldo"].sum(min_count=1)
+d_efic = (d_saldo / d_qtd) if d_qtd else np.nan
+d_atras = int((dfc["Prioridade"] == "Atrasado").sum())
+
+d1, d2, d3, d4, d5, d6 = st.columns(6)
+with d1:
+    st.markdown(card("Pedidos", fmt_num(len(dfc)), "linhas de pedido"), unsafe_allow_html=True)
+with d2:
+    st.markdown(card("Unidades pedidas", fmt_num(d_qtd), "soma de Qtd"), unsafe_allow_html=True)
+with d3:
+    st.markdown(
+        card("Entregue", fmt_num(d_qtd - d_saldo), "Qtd − Saldo", "#2e7d32"),
+        unsafe_allow_html=True,
+    )
+with d4:
+    st.markdown(card("Saldo em aberto", fmt_num(d_saldo), "soma de Saldo"), unsafe_allow_html=True)
+with d5:
+    st.markdown(
+        card("Eficácia", fmt_pct(d_efic), "Saldo ÷ Qtd", "#667eea"),
+        unsafe_allow_html=True,
+    )
+with d6:
+    st.markdown(
+        card("Atrasados", f"{d_atras}", "entrega vencida", "#b71c1c"),
+        unsafe_allow_html=True,
+    )
+
+col_g, col_h = st.columns(2)
+
+with col_g:
+    dfc_marca = (
+        dfc.groupby("Marca")
+        .agg(Qtd=("Qtd", "sum"), Saldo=("Saldo", "sum"))
+        .reset_index()
+    )
+    dfc_marca["Entregue"] = dfc_marca["Qtd"] - dfc_marca["Saldo"]
+    dfc_marca = dfc_marca.sort_values("Qtd")
+
+    fig = go.Figure()
+    fig.add_bar(
+        y=dfc_marca["Marca"],
+        x=dfc_marca["Entregue"],
+        name="Entregue",
+        orientation="h",
+        marker_color="#2e7d32",
+        hovertemplate="%{y}<br>Entregue: %{x:,.0f}<extra></extra>",
+    )
+    fig.add_bar(
+        y=dfc_marca["Marca"],
+        x=dfc_marca["Saldo"],
+        name="Saldo em aberto",
+        orientation="h",
+        marker_color="#ff9800",
+        hovertemplate="%{y}<br>Saldo: %{x:,.0f}<extra></extra>",
+    )
+    fig.update_layout(
+        template=template_plotly(),
+        height=360,
+        barmode="stack",
+        title="Volume por marca nesta confecção",
+        xaxis_title="Unidades",
+        legend=dict(orientation="h", y=1.12),
+        margin=dict(t=60, l=10, r=10, b=10),
+    )
+    st.plotly_chart(fig, width="stretch")
+
+with col_h:
+    dfc["Faixa"] = dfc["Eficacia"].apply(classificar_eficacia)
+    dfc_faixa = (
+        dfc.groupby("Faixa")
+        .agg(Pedidos=("Compra", "count"), Qtd=("Qtd", "sum"), Saldo=("Saldo", "sum"))
+        .reindex([f for f in ordem_faixas if f in dfc["Faixa"].unique()])
+        .reset_index()
+        .fillna(0)
+    )
+    fig = px.bar(
+        dfc_faixa,
+        x="Faixa",
+        y="Pedidos",
+        color="Saldo",
+        color_continuous_scale=["#fdecea", "#c62828"],
+        labels={"Faixa": "", "Pedidos": "Pedidos"},
+        title="Pedidos por faixa de eficácia nesta confecção",
+        template=template_plotly(),
+    )
+    fig.update_layout(
+        height=360,
+        coloraxis_showscale=False,
+        margin=dict(t=50, l=10, r=10, b=10),
+    )
+    st.plotly_chart(fig, width="stretch")
+
+col_i, col_j = st.columns(2)
+
+with col_i:
+    dfc_cod = (
+        dfc.groupby(["Cód Confec", "Confeccionado"])
+        .agg(Qtd=("Qtd", "sum"), Saldo=("Saldo", "sum"), Pedidos=("Compra", "count"))
+        .reset_index()
+    )
+    dfc_cod["Eficácia"] = np.where(
+        dfc_cod["Qtd"] > 0, dfc_cod["Saldo"] / dfc_cod["Qtd"], np.nan
+    )
+    dfc_cod = dfc_cod.sort_values("Saldo", ascending=False).head(10)
+    dfc_cod["Rótulo"] = (
+        dfc_cod["Cód Confec"].astype(str)
+        + " · "
+        + dfc_cod["Confeccionado"].astype(str).str.slice(0, 26)
+    )
+    fig = px.bar(
+        dfc_cod.sort_values("Saldo"),
+        x="Saldo",
+        y="Rótulo",
+        orientation="h",
+        color="Eficácia",
+        color_continuous_scale=["#2e7d32", "#ff9800", "#c62828"],
+        labels={"Saldo": "Saldo em aberto", "Rótulo": "", "Eficácia": "Eficácia"},
+        title="Top 10 códigos com maior saldo em aberto",
+        template=template_plotly(),
+    )
+    fig.update_layout(
+        height=360,
+        coloraxis_showscale=False,
+        margin=dict(t=50, l=10, r=10, b=10),
+    )
+    st.plotly_chart(fig, width="stretch")
+
+with col_j:
+    if "Dt Emissao" in dfc.columns and dfc["Dt Emissao"].notna().any():
+        dfc_mes = (
+            dfc.dropna(subset=["Dt Emissao"])
+            .groupby(dfc["Dt Emissao"].dt.to_period("M").dt.to_timestamp())
+            .agg(Qtd=("Qtd", "sum"), Pedidos=("Compra", "count"))
+            .reset_index()
+            .rename(columns={"Dt Emissao": "Mês"})
+        )
+        fig = px.area(
+            dfc_mes,
+            x="Mês",
+            y="Qtd",
+            color_discrete_sequence=["#667eea"],
+            title="Evolução do volume pedido por mês de emissão",
+            template=template_plotly(),
+        )
+        fig.update_layout(height=360, margin=dict(t=50, l=10, r=10, b=10))
+        st.plotly_chart(fig, width="stretch")
+    else:
+        dfc_prio = (
+            dfc.groupby("Prioridade")
+            .agg(Pedidos=("Compra", "count"), Saldo=("Saldo", "sum"))
+            .reindex(["Atrasado", "Alta", "Média", "Baixa"])
+            .dropna(how="all")
+            .reset_index()
+        )
+        fig = px.bar(
+            dfc_prio,
+            x="Prioridade",
+            y="Pedidos",
+            color="Prioridade",
+            color_discrete_map={k: v for k, v in CORES_PRIORIDADE.items()},
+            title="Pedidos por prioridade",
+            template=template_plotly(),
+        )
+        fig.update_layout(height=360, showlegend=False, margin=dict(t=50, l=10, r=10, b=10))
+        st.plotly_chart(fig, width="stretch")
+
+with st.expander(f"📋 Pedidos da confecção — {conf_sel}"):
+    colunas_pedido = [
+        "Compra",
+        "Cód Confec",
+        "Confeccionado",
+        "Marca",
+        "Qtd",
+        "Saldo",
+        "Eficacia",
+        "Dt Entrega",
+        "Prioridade",
+        "Status",
+    ]
+    dfc_tab = (
+        dfc[colunas_pedido]
+        .sort_values("Dt Entrega", na_position="last")
+        .copy()
+    )
+    dfc_tab["Dt Entrega"] = dfc_tab["Dt Entrega"].map(fmt_data)
+    st.dataframe(
+        dfc_tab.style.format(
+            {
+                "Qtd": "{:,.0f}",
+                "Saldo": "{:,.0f}",
+                "Eficacia": "{:.1%}",
+            }
+        ),
+        width="stretch",
+        hide_index=True,
+    )
+    st.download_button(
+        "📥 Baixar CSV — pedidos desta confecção",
+        data=dfc_tab.to_csv(index=False, encoding="utf-8-sig"),
+        file_name=(
+            f"pedidos_{conf_sel.split()[0].lower()}_"
+            f"{date.today().strftime('%Y-%m-%d')}.csv"
+        ),
+        mime="text/csv",
+        width="stretch",
+    )
+
 # ==================== EXPORTAÇÃO ====================
 
 st.markdown("---")
 st.markdown("### 📥 Exportar os agregados do dashboard")
+
+df_conf_marca = (
+    df.groupby(["Confecção", "Marca"])
+    .agg(Pedidos=("Compra", "count"), Qtd=("Qtd", "sum"), Saldo=("Saldo", "sum"))
+    .reset_index()
+    .sort_values(["Confecção", "Qtd"], ascending=[True, False])
+)
+df_conf_marca["Entregue"] = df_conf_marca["Qtd"] - df_conf_marca["Saldo"]
+df_conf_marca["Eficácia"] = np.where(
+    df_conf_marca["Qtd"] > 0, df_conf_marca["Saldo"] / df_conf_marca["Qtd"], np.nan
+)
 
 buffer = io.BytesIO()
 with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
     df_marca.to_excel(writer, index=False, sheet_name="Por Marca")
     df_cod.to_excel(writer, index=False, sheet_name="Por Cod Confec")
     df_conf.to_excel(writer, index=False, sheet_name="Por Confeccao")
+    df_conf_marca.to_excel(writer, index=False, sheet_name="Confeccao x Marca")
     df_faixa.to_excel(writer, index=False, sheet_name="Eficacia")
     df[["Marca", "Confecção", "Status", "Compra", "Cód Confec", "Confeccionado", "Qtd", "Saldo",
         "Dt Entrega", "Prioridade", "Eficacia"]].to_excel(writer, index=False, sheet_name="Pedidos")
