@@ -36,18 +36,12 @@ from nucleo import (
     preparar_pedidos,
     saldo2_por_codigo,
     sidebar_arquivos,
+    tema_escuro,
     texto_dias,
 )
 
 # ==================== TEMA (claro / escuro) ====================
-try:
-    _tema_atual = st.context.theme.type
-except Exception:
-    _tema_atual = None
-TEMA_ESCURO = _tema_atual == "dark"
-
-if TEMA_ESCURO:
-    PALETA = """
+PALETA_ESCURO = """
             --kb-surface: #1a2332;
             --kb-surface-2: #202b3d;
             --kb-row-alt: #1c2635;
@@ -69,8 +63,8 @@ if TEMA_ESCURO:
             --kb-qe: #ffb74d;
             --kb-qe-bg: rgba(255, 183, 77, 0.12);
 """
-else:
-    PALETA = """
+
+PALETA_CLARO = """
             --kb-surface: #ffffff;
             --kb-surface-2: #f8fafd;
             --kb-row-alt: #fbfcfe;
@@ -103,6 +97,9 @@ def pagina_kanban():
         layout="wide",
         initial_sidebar_state="expanded",
     )
+
+    # A paleta acompanha o tema em uso (claro/escuro) a cada execução
+    paleta = PALETA_ESCURO if tema_escuro() else PALETA_CLARO
 
     st.markdown(
         """
@@ -272,7 +269,7 @@ def pagina_kanban():
                 font-size: 0.92rem;
             }
         </style>
-        """.replace("/*__PALETA__*/", PALETA),
+        """.replace("/*__PALETA__*/", paleta),
         unsafe_allow_html=True,
     )
 

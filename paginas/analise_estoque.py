@@ -21,16 +21,16 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from nucleo import (
-    CORES_GRAFICO,
-    TEMPLATE_PLOTLY,
     aplicar_estilo_comum,
     cabecalho,
     card,
+    cores_grafico,
     fmt_num,
     fmt_pct,
     preparar_estoque,
     preparar_pedidos,
     sidebar_arquivos,
+    template_plotly,
 )
 
 st.set_page_config(
@@ -217,7 +217,7 @@ fig = px.bar(
     orientation="h",
     title=f"Top {len(df_ord)} itens — físico (Saldo 1), trânsito e confecção",
     labels={"Saldo 1": "Saldo 1 (físico)", "Item": ""},
-    template=TEMPLATE_PLOTLY,
+    template=template_plotly(),
 )
 fig.add_bar(
     x=df_ord.sort_values("Saldo 3")["Em Trânsito"],
@@ -254,9 +254,9 @@ with col_a:
         names="Situação do item",
         values="Itens",
         hole=0.45,
-        color_discrete_sequence=CORES_GRAFICO,
+        color_discrete_sequence=cores_grafico(),
         title="Itens por situação de cobertura",
-        template=TEMPLATE_PLOTLY,
+        template=template_plotly(),
     )
     fig.update_layout(height=400, margin=dict(t=50, l=10, r=10, b=10))
     st.plotly_chart(fig, width="stretch")
@@ -281,7 +281,7 @@ with col_b:
         labels={"value": "Unidades", "variable": ""},
         color_discrete_map={"Saldo1": "#2e7d32", "Saldo2": "#ff9800", "Saldo3": "#667eea"},
         title="Saldo 1, 2 e 3 por marca",
-        template=TEMPLATE_PLOTLY,
+        template=template_plotly(),
     )
     fig.update_layout(height=400, margin=dict(t=50, l=10, r=10, b=10))
     st.plotly_chart(fig, width="stretch")
@@ -305,7 +305,7 @@ else:
         hover_data={"Saldo 3": ":,.0f", "Demanda": ":,.0f", "Cobertura": ":.2f"},
         labels={"Saldo 3": "Saldo 3 (estoque total)", "Demanda": "Demanda em aberto (pedidos)"},
         title="Cobertura por item — pontos abaixo da diagonal estão em déficit",
-        template=TEMPLATE_PLOTLY,
+        template=template_plotly(),
     )
     limite = float(max(df_dem["Saldo 3"].max(), df_dem["Demanda"].max())) or 1
     fig.add_trace(
@@ -336,7 +336,7 @@ else:
         color_continuous_scale=["#c62828", "#e8f5e9"],
         labels={"Déficit": "Saldo 3 − Demanda", "Item": ""},
         title=f"Top {min(top_n, len(df_def))} itens em déficit",
-        template=TEMPLATE_PLOTLY,
+        template=template_plotly(),
     )
     fig.update_layout(height=max(420, 26 * min(top_n, len(df_def))), coloraxis_showscale=False, margin=dict(t=55, l=10, r=10, b=10))
     st.plotly_chart(fig, width="stretch")

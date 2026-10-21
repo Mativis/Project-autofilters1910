@@ -17,7 +17,7 @@ PAGINA: Dashboards
   excecoes: []
   erros st.error: []
   warnings: []
-  graficos (plotly): 8
+  graficos (plotly): 9
   dataframes: 2
   tabs: []
   downloads: ['📥 Baixar CSV — concentração por marca', '📊 Baixar Excel — agregados do dashboard']

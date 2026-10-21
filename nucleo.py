@@ -23,22 +23,37 @@ import streamlit as st
 
 # ==================== TEMA (claro / escuro) ====================
 
-try:
-    _tema_atual = st.context.theme.type
-except Exception:
-    _tema_atual = None
+def tema_escuro():
+    """True se o aplicativo está em tema escuro.
 
-TEMA_ESCURO = _tema_atual == "dark"
+    ``st.context.theme.type`` considera a preferência de cor do **navegador**
+    (e não o tema escolhido no Streamlit), por isso consultamos primeiro a
+    opção ``theme.base``, que respeita o tema selecionado no menu de
+    configurações e o ``[theme] base`` do ``config.toml``.
+    """
+    try:
+        base = st.get_option("theme.base")
+        if base in ("dark", "light"):
+            return base == "dark"
+    except Exception:
+        pass
+    try:
+        return st.context.theme.type == "dark"
+    except Exception:
+        return False
 
-TEMPLATE_PLOTLY = "plotly_dark" if TEMA_ESCURO else "plotly_white"
 
-CORES_GRAFICO = (
-    ["#667eea", "#764ba2", "#f44336", "#ff9800", "#4caf50", "#00bcd4",
-     "#e91e63", "#795548", "#607d8b", "#9c27b0", "#009688", "#cddc39"]
-    if TEMA_ESCURO
-    else ["#667eea", "#764ba2", "#f44336", "#ff9800", "#4caf50", "#00bcd4",
-          "#e91e63", "#795548", "#607d8b", "#9c27b0", "#009688", "#cddc39"]
-)
+def template_plotly():
+    """Template do Plotly conforme o tema em uso."""
+    return "plotly_dark" if tema_escuro() else "plotly_white"
+
+
+def cores_grafico():
+    """Paleta de cores usada nos gráficos."""
+    return [
+        "#667eea", "#764ba2", "#f44336", "#ff9800", "#4caf50", "#00bcd4",
+        "#e91e63", "#795548", "#607d8b", "#9c27b0", "#009688", "#cddc39",
+    ]
 
 # ==================== CONSTANTES ====================
 
@@ -385,7 +400,7 @@ def saldo2_por_codigo(df_estoque):
 # ==================== ESTILO COMUM DAS PÁGINAS ====================
 
 def _cores_pagina():
-    if TEMA_ESCURO:
+    if tema_escuro():
         return {
             "surface": "#1a2332",
             "border": "#2d3a4f",

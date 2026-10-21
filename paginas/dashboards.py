@@ -15,17 +15,17 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from nucleo import (
-    CORES_GRAFICO,
-    TEMPLATE_PLOTLY,
     aplicar_estilo_comum,
     cabecalho,
     card,
     codigos_saldo2_negativo,
+    cores_grafico,
     fmt_num,
     fmt_pct,
     preparar_estoque,
     preparar_pedidos,
     sidebar_arquivos,
+    template_plotly,
 )
 
 st.set_page_config(
@@ -192,7 +192,7 @@ with col_a:
         color_continuous_scale=["#dfe6fb", "#667eea"],
         labels={"Qtd": "Unidades pedidas", "Marca": "", "% Pedido": "% do total"},
         title=f"Top {len(top_marcas)} marcas por volume pedido",
-        template=TEMPLATE_PLOTLY,
+        template=template_plotly(),
     )
     fig.update_layout(height=420, coloraxis_showscale=False, margin=dict(t=50, l=10, r=10, b=10))
     fig.update_traces(textposition="outside", cliponaxis=False)
@@ -206,7 +206,7 @@ with col_b:
         color="% Pedido",
         color_continuous_scale=["#dfe6fb", "#667eea"],
         title="Participação das marcas no volume pedido",
-        template=TEMPLATE_PLOTLY,
+        template=template_plotly(),
     )
     fig.update_layout(height=420, margin=dict(t=50, l=10, r=10, b=10))
     st.plotly_chart(fig, width="stretch")
@@ -274,7 +274,7 @@ fig.add_scatter(
     hovertemplate="Cód %{x}<br>Acumulado: %{y:.1f}%<extra></extra>",
 )
 fig.update_layout(
-    template=TEMPLATE_PLOTLY,
+    template=template_plotly(),
     height=430,
     title=f"Pareto — top {len(top_cod)} códigos por volume pedido",
     xaxis_title="Cód Confec",
@@ -329,7 +329,7 @@ with col_c:
             y="Qtd",
             color_discrete_sequence=["#667eea"],
             title="Evolução do volume pedido por mês de emissão",
-            template=TEMPLATE_PLOTLY,
+            template=template_plotly(),
         )
         fig.update_layout(height=380, margin=dict(t=50, l=10, r=10, b=10))
         st.plotly_chart(fig, width="stretch")
@@ -342,10 +342,10 @@ with col_d:
         df_status,
         names="Status",
         values="Qtd",
-        color_discrete_sequence=CORES_GRAFICO,
+        color_discrete_sequence=cores_grafico(),
         hole=0.45,
         title="Participação por status do pedido",
-        template=TEMPLATE_PLOTLY,
+        template=template_plotly(),
     )
     fig.update_layout(height=380, margin=dict(t=50, l=10, r=10, b=10))
     st.plotly_chart(fig, width="stretch")
@@ -367,7 +367,7 @@ fig = px.bar(
     color_continuous_scale=["#e8f5e9", "#2e7d32"],
     labels={"Qtd": "Unidades pedidas", "Confecção": "", "Saldo": "Saldo em aberto"},
     title=f"Top {min(top_n, len(df_conf))} confecções por volume pedido",
-    template=TEMPLATE_PLOTLY,
+    template=template_plotly(),
 )
 fig.update_layout(height=420, coloraxis_showscale=False, margin=dict(t=50, l=10, r=10, b=10))
 st.plotly_chart(fig, width="stretch")
@@ -416,7 +416,7 @@ with col_e:
         color_continuous_scale=["#fdecea", "#c62828"],
         labels={"Faixa": "", "Pedidos": "Pedidos"},
         title="Distribuição dos pedidos por faixa de eficácia",
-        template=TEMPLATE_PLOTLY,
+        template=template_plotly(),
     )
     fig.update_layout(height=400, coloraxis_showscale=False, margin=dict(t=50, l=10, r=10, b=10))
     st.plotly_chart(fig, width="stretch")
@@ -438,7 +438,7 @@ with col_f:
         color_continuous_scale=["#2e7d32", "#ff9800", "#c62828"],
         labels={"Eficácia": "Eficácia (Saldo ÷ Qtd)", "Marca": ""},
         title="Eficácia média por marca",
-        template=TEMPLATE_PLOTLY,
+        template=template_plotly(),
     )
     fig.update_layout(height=400, coloraxis_showscale=False, margin=dict(t=50, l=10, r=10, b=10))
     st.plotly_chart(fig, width="stretch")
@@ -466,7 +466,7 @@ fig = px.bar(
     color_continuous_scale=["#c62828", "#ff9800", "#2e7d32"],
     labels={"Eficácia": "Eficácia (Saldo ÷ Qtd)", "Descrição": ""},
     title=f"itens com menor eficácia (Top {min(top_n, len(itens_baixa))})",
-    template=TEMPLATE_PLOTLY,
+    template=template_plotly(),
 )
 fig.update_layout(height=430, coloraxis_showscale=False, margin=dict(t=50, l=10, r=10, b=10))
 st.plotly_chart(fig, width="stretch")
