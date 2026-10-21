@@ -185,11 +185,11 @@ col_a, col_b = st.columns([1.25, 1])
 
 with col_a:
     fig = px.bar(
-        top_marcas.sort_values("Qtd"),
+        top_marcas.sort_values("% Pedido"),
         x="Qtd",
         y="Marca",
         orientation="h",
-        text=top_marcas["% Pedido"].map(lambda v: f"{v * 100:.1f}%"),
+        text=top_marcas["% Pedido"].map(lambda v: f"{v * 100:1.0f}%"),
         color="% Pedido",
         color_continuous_scale=["#dfe6fb", "#667eea"],
         labels={"Qtd": "Unidades pedidas", "Marca": "", "% Pedido": "% do total"},
