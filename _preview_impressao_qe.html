@@ -1,0 +1,95 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Kanban de Confecção — GGTTEX INDUSTRIA LTDA — 21/10/2026</title><style>
+    @page { size: A4 landscape; margin: 10mm; }
+    * { box-sizing: border-box; }
+    body {
+        font-family: "Segoe UI", Roboto, Arial, sans-serif;
+        color: #1f2430;
+        background: #eef1f6;
+        margin: 0;
+        padding: 18px;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .barra {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+        background: #ffffff;
+        border: 1px solid #dfe4f0;
+        border-radius: 10px;
+        padding: 10px 14px;
+        margin-bottom: 18px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.07);
+    }
+    .botao {
+        border: 0;
+        cursor: pointer;
+        border-radius: 8px;
+        padding: 10px 18px;
+        font-size: 14px;
+        font-weight: 700;
+        color: #ffffff;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .dica { font-size: 12px; color: #5a6172; }
+    .cab { margin-bottom: 14px; }
+    .cab h1 { font-size: 20px; margin: 0 0 4px 0; }
+    .cab p { margin: 2px 0; font-size: 12px; color: #5a6172; }
+    .legenda { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; font-size: 12px; font-weight: 600; }
+    .legenda .item { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .dot.atrasado { background: #b71c1c; }
+    .dot.alta { background: #f44336; }
+    .dot.media { background: #ff9800; }
+    .dot.baixa { background: #4caf50; }
+    .bloco {
+        background: #ffffff;
+        border: 1px solid #dfe4f0;
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin-bottom: 18px;
+    }
+    .bloco h2 { font-size: 15px; margin: 0 0 2px 0; }
+    .bloco h2 .cont { font-size: 12px; font-weight: 600; color: #5a6172; }
+    .resumo-linha { margin: 0 0 10px 0; font-size: 12px; color: #3d4455; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #d9dfec; padding: 5px 7px; font-size: 11px; text-align: left; vertical-align: top; }
+    th {
+        background: #f2f5fa;
+        color: #5a6172;
+        font-size: 9.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    th.num-h, td.num { text-align: right; }
+    td.num { font-weight: 700; white-space: nowrap; }
+    th.num-h.qe, td.num.qe { color: #b26a00; background: #fff6e6; }
+    tfoot td.num.qe { color: #b26a00; background: #fdeeda; }
+    td.dt { white-space: nowrap; }
+    td.conf { white-space: nowrap; }
+    td.desc { min-width: 220px; }
+    .dias { display: block; font-size: 9.5px; font-weight: 600; color: #7a8194; }
+    .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 20px;
+        font-size: 10px;
+        font-weight: 700;
+        color: #ffffff;
+        white-space: nowrap;
+    }
+    .badge.atrasado { background: #b71c1c; }
+    .badge.alta { background: #f44336; }
+    .badge.media { background: #ff9800; }
+    .badge.baixa { background: #4caf50; }
+    tfoot td { font-weight: 800; background: #f8fafd; }
+    @media print {
+        body { background: #ffffff; padding: 0; }
+        .barra { display: none; }
+        .bloco { border: 0; border-radius: 0; padding: 0; margin: 0 0 14px 0; }
+        .bloco + .bloco { break-before: page; page-break-before: always; }
+        .bloco, table, tr, td, th { break-inside: avoid; page-break-inside: avoid; }
+        thead { display: table-header-group; }
+    }
+</style></head><body><div class="barra"><button class="botao" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button><span class="dica">Dica: em “Mais definições”, escolha <b>Paisagem</b> e marque <b>Gráficos de plano de fundo</b> para sair com as cores.</span></div><header class="cab"><h1>📌 Kanban de Confecção </h1><p><b>Confecção:</b> GGTTEX INDUSTRIA LTDA</p><p>Data de referência: <b>21/10/2026</b> · 27 pedido(s) · 11.801 unidade(s)</p></header><div class="legenda"><span class="item"><span class="dot atrasado"></span> ⚠️ Atrasado — data de entrega vencida</span><span class="item"><span class="dot alta"></span> 🔴 Alta — entrega em até 15 dias</span><span class="item"><span class="dot media"></span> 🟠 Média — entrega em 16 a 30 dias</span><span class="item"><span class="dot baixa"></span> 🟢 Baixa — entrega em mais de 1 mês</span></div><section class="bloco"><h2>🏭 GGTTEX INDUSTRIA LTDA <span class="cont">(27 pedido(s) · 11.801 unidade(s) · Q.E: 11.207)</span></h2><p class="resumo-linha">⚠️ Atrasado: <b>18</b> &nbsp;·&nbsp; 🔴 Alta: <b>9</b> &nbsp;·&nbsp; 🟠 Média: <b>0</b> &nbsp;·&nbsp; 🟢 Baixa: <b>0</b></p><table><thead><tr><th>Pedido</th><th>Cód Confec</th><th>Descrição</th><th>Confecção</th><th class="num-h">Quantidade</th><th class="num-h">Q.E</th><th>Data de Entrega</th><th>Prioridade</th></tr></thead><tbody><tr><td>64184</td><td>24867</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 3P SOLTEIRO CAMICADO BRANCO</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">112</td><td class="num qe">112</td><td class="dt">13/10/2026<span class="dias">⚠️ Atrasado há 8 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>64184</td><td>24870</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P CASAL CAMICADO BRANCO</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">100</td><td class="num qe">100</td><td class="dt">13/10/2026<span class="dias">⚠️ Atrasado há 8 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>64184</td><td>24873</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P QUEEN CAMICADO BRANCO</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">96</td><td class="num qe">96</td><td class="dt">13/10/2026<span class="dias">⚠️ Atrasado há 8 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>64185</td><td>24868</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 3P SOLTEIRO CAMICADO ROSE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">140</td><td class="num qe">140</td><td class="dt">13/10/2026<span class="dias">⚠️ Atrasado há 8 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>64185</td><td>24872</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P CASAL CAMICADO ROSE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">160</td><td class="num qe">160</td><td class="dt">13/10/2026<span class="dias">⚠️ Atrasado há 8 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>64185</td><td>24875</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P QUEEN CAMICADO ROSE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">144</td><td class="num qe">144</td><td class="dt">13/10/2026<span class="dias">⚠️ Atrasado há 8 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>64187</td><td>24869</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 3P SOLTEIRO CAMICADO BEGE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">84</td><td class="num qe">84</td><td class="dt">13/10/2026<span class="dias">⚠️ Atrasado há 8 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>64187</td><td>24871</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P CASAL CAMICADO BEGE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">109</td><td class="num qe">109</td><td class="dt">13/10/2026<span class="dias">⚠️ Atrasado há 8 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>64187</td><td>24874</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P QUEEN CAMICADO BEGE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">107</td><td class="num qe">107</td><td class="dt">13/10/2026<span class="dias">⚠️ Atrasado há 8 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>63737</td><td>24869</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 3P SOLTEIRO CAMICADO BEGE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">560</td><td class="num qe">560</td><td class="dt">19/10/2026<span class="dias">⚠️ Atrasado há 2 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>63737</td><td>24867</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 3P SOLTEIRO CAMICADO BRANCO</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">560</td><td class="num qe">238</td><td class="dt">19/10/2026<span class="dias">⚠️ Atrasado há 2 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>63737</td><td>24868</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 3P SOLTEIRO CAMICADO ROSE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">448</td><td class="num qe">247</td><td class="dt">19/10/2026<span class="dias">⚠️ Atrasado há 2 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>63737</td><td>24871</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P CASAL CAMICADO BEGE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">769</td><td class="num qe">769</td><td class="dt">19/10/2026<span class="dias">⚠️ Atrasado há 2 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>63737</td><td>24870</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P CASAL CAMICADO BRANCO</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">740</td><td class="num qe">669</td><td class="dt">19/10/2026<span class="dias">⚠️ Atrasado há 2 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>63737</td><td>24872</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P CASAL CAMICADO ROSE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">600</td><td class="num qe">600</td><td class="dt">19/10/2026<span class="dias">⚠️ Atrasado há 2 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>63737</td><td>24874</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P QUEEN CAMICADO BEGE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">742</td><td class="num qe">742</td><td class="dt">19/10/2026<span class="dias">⚠️ Atrasado há 2 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>63737</td><td>24873</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P QUEEN CAMICADO BRANCO</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">752</td><td class="num qe">752</td><td class="dt">19/10/2026<span class="dias">⚠️ Atrasado há 2 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>63737</td><td>24875</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P QUEEN CAMICADO ROSE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">576</td><td class="num qe">576</td><td class="dt">19/10/2026<span class="dias">⚠️ Atrasado há 2 dia(s)</span></td><td><span class="badge atrasado">⚠️ Atrasado</span></td></tr><tr><td>63901</td><td>24869</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 3P SOLTEIRO CAMICADO BEGE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">560</td><td class="num qe">560</td><td class="dt">26/10/2026<span class="dias">⏰ Faltam 5 dia(s)</span></td><td><span class="badge alta">Alta</span></td></tr><tr><td>63901</td><td>24867</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 3P SOLTEIRO CAMICADO BRANCO</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">200</td><td class="num qe">200</td><td class="dt">26/10/2026<span class="dias">⏰ Faltam 5 dia(s)</span></td><td><span class="badge alta">Alta</span></td></tr><tr><td>63901</td><td>24868</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 3P SOLTEIRO CAMICADO ROSE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">232</td><td class="num qe">232</td><td class="dt">26/10/2026<span class="dias">⏰ Faltam 5 dia(s)</span></td><td><span class="badge alta">Alta</span></td></tr><tr><td>63901</td><td>24871</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P CASAL CAMICADO BEGE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">760</td><td class="num qe">760</td><td class="dt">26/10/2026<span class="dias">⏰ Faltam 5 dia(s)</span></td><td><span class="badge alta">Alta</span></td></tr><tr><td>63901</td><td>24870</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P CASAL CAMICADO BRANCO</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">618</td><td class="num qe">618</td><td class="dt">26/10/2026<span class="dias">⏰ Faltam 5 dia(s)</span></td><td><span class="badge alta">Alta</span></td></tr><tr><td>63901</td><td>24872</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P CASAL CAMICADO ROSE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">600</td><td class="num qe">600</td><td class="dt">26/10/2026<span class="dias">⏰ Faltam 5 dia(s)</span></td><td><span class="badge alta">Alta</span></td></tr><tr><td>63901</td><td>24874</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P QUEEN CAMICADO BEGE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">736</td><td class="num qe">736</td><td class="dt">26/10/2026<span class="dias">⏰ Faltam 5 dia(s)</span></td><td><span class="badge alta">Alta</span></td></tr><tr><td>63901</td><td>24873</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P QUEEN CAMICADO BRANCO</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">736</td><td class="num qe">736</td><td class="dt">26/10/2026<span class="dias">⏰ Faltam 5 dia(s)</span></td><td><span class="badge alta">Alta</span></td></tr><tr><td>63901</td><td>24875</td><td class="desc">JG DE LENÇOL COMPLETO STRIPE 4P QUEEN CAMICADO ROSE</td><td class="conf">GGTTEX INDUSTRIA LTDA</td><td class="num">560</td><td class="num qe">560</td><td class="dt">26/10/2026<span class="dias">⏰ Faltam 5 dia(s)</span></td><td><span class="badge alta">Alta</span></td></tr></tbody><tfoot><tr><td colspan="4">Total (27 item(ns))</td><td class="num">11.801</td><td class="num qe">11.207</td><td colspan="2"></td></tr></tfoot></table></section></body></html>
