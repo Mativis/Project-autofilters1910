@@ -24,6 +24,8 @@ from nucleo import (
     fmt_data,
     fmt_num,
     fmt_pct,
+    normalizar_cod,
+    para_texto,
     preparar_estoque,
     preparar_pedidos,
     sidebar_arquivos,
@@ -112,8 +114,10 @@ with st.sidebar:
 
     st.markdown("---")
     st.header("🚫 Exclusões")
-    if "Cód Confec" in df_pedidos.columns:
-        codigos_todos = sorted(df_pedidos["Cód Confec"].astype(str).unique().tolist())
+    if "Cód Confec_norm" in df_pedidos.columns:
+        codigos_todos = sorted(
+            {c for c in df_pedidos["Cód Confec_norm"].tolist() if c}
+        )
         codigos_ignorar = st.multiselect(
             "Ignorar Cód Confec",
             options=codigos_todos,
@@ -137,8 +141,7 @@ if usar_saldo2 and df_estoque is not None:
     codigos = codigos_saldo2_negativo(df_estoque)
     df = df[df["Cód Confec_norm"].isin(codigos)]
 if codigos_ignorar:
-    codigos_ignorar_norm = set(str(c).strip() for c in codigos_ignorar)
-    df = df[~df["Cód Confec"].astype(str).isin(codigos_ignorar_norm)]
+    df = df[~df["Cód Confec_norm"].isin(set(codigos_ignorar))]
 
 if df.empty:
     st.warning("Nenhum pedido encontrado com os filtros selecionados.")
@@ -251,7 +254,7 @@ with chart_cols[0]:
             margin=dict(t=70, l=10, r=80, b=10),
             showlegend=False,
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
 with chart_cols[1]:
     with st.container(border=True):
@@ -270,7 +273,7 @@ with chart_cols[1]:
             hovertemplate="<b>%{label}</b><br>Qtd: %{value:,.0f}<br>Participação: %{percent}<extra></extra>",
         )
         fig.update_layout(height=max(420, 32 * len(top_marcas) + 80), margin=dict(t=70, l=10, r=10, b=10))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
 with st.expander("📋 Ver tabela detalhada por marca", expanded=False):
     st.dataframe(
@@ -289,7 +292,7 @@ with st.expander("📋 Ver tabela detalhada por marca", expanded=False):
         ].style.format(
             {"Eficácia": "{:.1%}", "% do volume": "{:.1%}", "% acumulado": "{:.1%}"}
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -317,14 +320,14 @@ top_cod = df_cod.head(top_n).copy()
 with st.container(border=True):
     fig = go.Figure()
     fig.add_bar(
-        x=top_cod["Cód Confec"].astype(str),
+        x=top_cod["Cód Confec"],
         y=top_cod["Qtd"],
         name="Qtd",
         marker_color="#667eea",
         hovertemplate="Cód %{x}<br>Qtd: %{y}<extra></extra>",
     )
     fig.add_scatter(
-        x=top_cod["Cód Confec"].astype(str),
+        x=top_cod["Cód Confec"],
         y=top_cod["Acumulado %"] * 100,
         name="% acumulado",
         yaxis="y2",
@@ -343,7 +346,7 @@ with st.container(border=True):
         legend=dict(orientation="h", y=1.12),
         margin=dict(t=70, l=10, r=10, b=10),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 with st.expander("📋 Ver tabela detalhada por código de confecção", expanded=False):
     st.dataframe(
@@ -364,7 +367,7 @@ with st.expander("📋 Ver tabela detalhada por código de confecção", expande
         ).style.format(
             {"Eficácia": "{:.1%}", "% do volume": "{:.1%}", "% acumulado": "{:.1%}"}
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -417,7 +420,7 @@ with chart_cols2[0]:
                 legend=dict(orientation="h", y=1.12),
                 margin=dict(t=70, l=10, r=10, b=10),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else:
             st.info("O arquivo de Pedidos não possui a coluna `Dt Emissao`.")
 
@@ -455,7 +458,7 @@ with chart_cols2[1]:
             margin=dict(t=70, l=10, r=90, b=10),
             showlegend=False,
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
 # Top Confecções
 with st.container(border=True):
@@ -492,7 +495,7 @@ with st.container(border=True):
         template=template_plotly(),
     )
     fig.update_layout(height=450, coloraxis_showscale=False, margin=dict(t=60, l=10, r=10, b=10))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 # ==================== 4. ANÁLISE DE EFICÁCIA ====================
 
@@ -552,7 +555,7 @@ with st.container(border=True):
         showlegend=False,
     )
     fig.update_xaxes(tickangle=-30)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 # ==================== 5. DETALHAMENTO POR CONFECÇÃO ====================
 
@@ -591,7 +594,7 @@ with st.container(border=True):
         legend=dict(orientation="h", y=1.12),
         margin=dict(t=70, l=10, r=10, b=10),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 with st.expander("📋 Ver tabela comparativa por confecção", expanded=False):
     _conf_tab = df_conf.copy()
@@ -621,7 +624,7 @@ with st.expander("📋 Ver tabela comparativa por confecção", expanded=False):
                 "Saldo": "{:,.0f}",
             }
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -692,7 +695,7 @@ with st.container(border=True):
             legend=dict(orientation="h", y=1.12),
             margin=dict(t=60, l=10, r=10, b=10),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with dcols1[1]:
         dfc["Faixa"] = dfc["Eficacia"].apply(classificar_eficacia)
@@ -718,7 +721,7 @@ with st.container(border=True):
             coloraxis_showscale=False,
             margin=dict(t=60, l=10, r=10, b=10),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     dcols2 = st.columns(2)
     with dcols2[0]:
@@ -732,9 +735,9 @@ with st.container(border=True):
         )
         dfc_cod = dfc_cod.sort_values("Saldo", ascending=False).head(10)
         dfc_cod["Rótulo"] = (
-            dfc_cod["Cód Confec"].astype(str)
+            para_texto(dfc_cod["Cód Confec"])
             + " · "
-            + dfc_cod["Confeccionado"].astype(str).str.slice(0, 26)
+            + para_texto(dfc_cod["Confeccionado"]).str.slice(0, 26)
         )
         fig = px.bar(
             dfc_cod.sort_values("Saldo"),
@@ -752,7 +755,7 @@ with st.container(border=True):
             coloraxis_showscale=False,
             margin=dict(t=60, l=10, r=10, b=10),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with dcols2[1]:
         if "Dt Emissao" in dfc.columns and dfc["Dt Emissao"].notna().any():
@@ -772,7 +775,7 @@ with st.container(border=True):
                 template=template_plotly(),
             )
             fig.update_layout(height=360, margin=dict(t=60, l=10, r=10, b=10))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else:
             dfc_prio = (
                 dfc.groupby("Prioridade")
@@ -791,7 +794,7 @@ with st.container(border=True):
                 template=template_plotly(),
             )
             fig.update_layout(height=360, showlegend=False, margin=dict(t=60, l=10, r=10, b=10))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
     with st.expander(f"📋 Listagem completa — {conf_sel}", expanded=False):
         colunas_pedido = [
@@ -820,7 +823,7 @@ with st.container(border=True):
                     "Eficacia": "{:.1%}",
                 }
             ),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
         st.download_button(
@@ -831,7 +834,7 @@ with st.container(border=True):
                 f"{date.today().strftime('%Y-%m-%d')}.csv"
             ),
             mime="text/csv",
-            use_container_width=True,
+            width="stretch",
         )
 
 # ==================== 6. TECIDO SUGERIDO ====================
@@ -842,17 +845,16 @@ tec_col = 'Tec Faz "x" Confec'
 df_tecido = None
 
 if df_estoque is not None:
-    df_estoque_tecido = preparar_estoque(df_estoque).copy()
-    df_estoque_tecido["Cód Confec_norm"] = df_estoque_tecido["Cód Confec"].map(lambda v: __import__('nucleo').normalizar_cod(v))
-    df_estoque_tecido[tec_col] = pd.to_numeric(df_estoque_tecido.get(tec_col), errors="coerce")
-    df_estoque_tecido["Saldo 5"] = pd.to_numeric(df_estoque_tecido.get("Saldo 5"), errors="coerce")
-    if "Cons. Unitário" in df_estoque_tecido.columns:
-        df_estoque_tecido["Cons. Unitário"] = pd.to_numeric(df_estoque_tecido.get("Cons. Unitário"), errors="coerce")
-    elif "Cons Unitario" in df_estoque_tecido.columns:
-        df_estoque_tecido["Cons. Unitário"] = pd.to_numeric(df_estoque_tecido.get("Cons Unitario"), errors="coerce")
-    else:
-        df_estoque_tecido["Cons. Unitário"] = np.nan
-    df_estoque_tecido["Descrição"] = df_estoque_tecido.get("Descrição", "")
+    df_estoque_tecido = df_estoque.copy()
+    df_estoque_tecido["Cód Confec_norm"] = df_estoque_tecido["Cód Confec"].map(normalizar_cod)
+    for coluna_t in (tec_col, "Saldo 5", "Cons. Unitário"):
+        if coluna_t not in df_estoque_tecido.columns:
+            df_estoque_tecido[coluna_t] = np.nan
+        df_estoque_tecido[coluna_t] = pd.to_numeric(
+            df_estoque_tecido[coluna_t], errors="coerce"
+        )
+    if "Descrição" not in df_estoque_tecido.columns:
+        df_estoque_tecido["Descrição"] = ""
 
     codigos_estoque = set(df_estoque_tecido["Cód Confec_norm"].dropna())
     codigos_pedidos_filtrados = set(df["Cód Confec_norm"].dropna())
@@ -862,9 +864,9 @@ if df_estoque is not None:
     df_tecido_base = df_tecido_base[df_tecido_base["Saldo 5"] < 0].copy()
 
     if codigos_ignorar:
-        codigos_ignorar_norm_t = set(str(c).strip() for c in codigos_ignorar)
-        df_tecido_base = df_tecido_base[~df_tecido_base["Cód Confec"].astype(str).isin(codigos_ignorar_norm_t)]
-        df_tecido_base = df_tecido_base[~df_tecido_base["Cód Confec_norm"].isin(codigos_ignorar_norm_t)]
+        df_tecido_base = df_tecido_base[
+            ~df_tecido_base["Cód Confec_norm"].isin(set(codigos_ignorar))
+        ]
 
     def calc_tecido(row):
         s5 = row.get("Saldo 5")
@@ -909,7 +911,11 @@ else:
     with chart_cols_t[0]:
         with st.container(border=True):
             df_tecido_g = df_tecido.copy()
-            df_tecido_g["Label"] = df_tecido_g["Cód Confec"].astype(str) + " - " + df_tecido_g["Descrição"].astype(str).str.slice(0, 30)
+            df_tecido_g["Label"] = (
+                para_texto(df_tecido_g["Cód Confec"])
+                + " - "
+                + para_texto(df_tecido_g["Descrição"]).str.slice(0, 30)
+            )
             df_tecido_g = df_tecido_g.sort_values("Tecido Sugerido (m)", ascending=True).tail(top_n)
             fig = go.Figure()
             fig.add_bar(
@@ -930,7 +936,7 @@ else:
                 margin=dict(t=70, l=10, r=90, b=10),
                 showlegend=False,
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
     with chart_cols_t[1]:
         with st.container(border=True):
@@ -950,7 +956,7 @@ else:
                     "Tecido Sugerido (m)": "{:,.3f}",
                 }
             ),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -991,7 +997,7 @@ with st.container(border=True):
             data=df_marca.to_csv(index=False, encoding="utf-8-sig"),
             file_name=f"dashboard_marcas_{date.today().strftime('%Y-%m-%d')}.csv",
             mime="text/csv",
-            use_container_width=True,
+            width="stretch",
         )
     with exp_cols[1]:
         st.download_button(
@@ -999,5 +1005,5 @@ with st.container(border=True):
             data=buffer.getvalue(),
             file_name=f"dashboard_pedidos_{date.today().strftime('%Y-%m-%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
+            width="stretch",
         )

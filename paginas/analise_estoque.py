@@ -28,6 +28,7 @@ from nucleo import (
     cores_grafico,
     fmt_num,
     fmt_pct,
+    para_texto,
     preparar_estoque,
     preparar_pedidos,
     sidebar_arquivos,
@@ -237,9 +238,9 @@ df_ord = df.reindex(
     df["Saldo 3"].abs().sort_values(ascending=False).index
 ).head(top_n).copy()
 df_ord["Item"] = (
-    df_ord["Descrição"].astype(str).str.slice(0, 40)
+    para_texto(df_ord["Descrição"]).str.slice(0, 40)
     + " ("
-    + df_ord["Cód Confec"].astype(str)
+    + para_texto(df_ord["Cód Confec"])
     + ")"
 )
 
@@ -355,9 +356,9 @@ else:
 
     df_def = df_dem.sort_values("Déficit").copy()
     df_def["Item"] = (
-        df_def["Descrição"].astype(str).str.slice(0, 40)
+        para_texto(df_def["Descrição"]).str.slice(0, 40)
         + " ("
-        + df_def["Cód Confec"].astype(str)
+        + para_texto(df_def["Cód Confec"])
         + ")"
     )
     fig = px.bar(
@@ -410,9 +411,9 @@ else:
     df_sug = df_compra[df_compra["Compra Sugerida"] > 0].copy()
     df_sug = df_sug.sort_values("Compra Sugerida", ascending=False)
     df_sug["Item"] = (
-        df_sug["Descrição"].astype(str).str.slice(0, 40)
+        para_texto(df_sug["Descrição"]).str.slice(0, 40)
         + " ("
-        + df_sug["Cód Confec"].astype(str)
+        + para_texto(df_sug["Cód Confec"])
         + ")"
     )
 

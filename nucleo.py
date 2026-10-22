@@ -120,6 +120,21 @@ def normalizar_cod(valor):
     return texto
 
 
+def para_texto(serie):
+    """Converte uma Series em texto sem quebrar com valores nulos.
+
+    No pandas 3, ``astype(str)`` preserva ``NaN`` como valor ausente — o que
+    faz ``sorted()`` explodir ao misturar ``float`` e ``str``. Aqui os nulos
+    viram string vazia e todo o resultado é ``str`` de verdade.
+    """
+    if serie is None:
+        return pd.Series(dtype="object")
+    try:
+        return serie.astype("string").fillna("").astype(str)
+    except Exception:
+        return serie.map(lambda v: "" if pd.isna(v) else str(v))
+
+
 # ==================== PRIORIDADE E FORMATAÇÃO ====================
 
 def calcular_prioridade(dt_entrega):
@@ -312,18 +327,34 @@ def sidebar_arquivos(mostrar_ajuda=True):
 # ==================== PREPARAÇÃO DOS DADOS ====================
 
 def _texto(valor, padrao):
-    texto = "" if valor is None else str(valor).strip()
+    if valor is None:
+        return padrao
+    try:
+        if pd.isna(valor):
+            return padrao
+    except (TypeError, ValueError):
+        pass
+    texto = str(valor).strip()
     return texto if texto else padrao
 
 
 def preparar_pedidos(df):
     """Normaliza o DataFrame de Pedidos (tipos, datas, textos e colunas calculadas)."""
+    if df is None:
+        return None
     df = df.copy()
     # Nomes de colunas com acento são padronizados (ex.: 'Dt Emissão' -> 'Dt Emissao')
     for antes, depois in (("Dt Emissão", "Dt Emissao"), ("Dt Emissao ", "Dt Emissao")):
         if antes in df.columns and depois not in df.columns:
             df = df.rename(columns={antes: depois})
+    # Garante as colunas mínimas (evita KeyError em planilhas incompletas)
+    for coluna in ("Cód Confec", "Compra", "Confeccionado", "Confecção", "Qtd", "Saldo"):
+        if coluna not in df.columns:
+            df[coluna] = np.nan
+    if "Dt Entrega" not in df.columns:
+        df["Dt Entrega"] = pd.NaT
     df["Cód Confec_norm"] = df["Cód Confec"].map(normalizar_cod)
+    df["Cód Confec"] = df["Cód Confec_norm"]
     df["Dt Entrega"] = pd.to_datetime(df["Dt Entrega"], errors="coerce")
     if "Dt Emissao" in df.columns:
         df["Dt Emissao"] = pd.to_datetime(df["Dt Emissao"], errors="coerce")
@@ -348,7 +379,11 @@ def preparar_pedidos(df):
 
 def preparar_estoque(df):
     """Normaliza o DataFrame de Estoque (tipos numéricos e textos)."""
+    if df is None:
+        return None
     df = df.copy()
+    if "Cód Confec" not in df.columns:
+        df["Cód Confec"] = np.nan
     df["Cód Confec_norm"] = df["Cód Confec"].map(normalizar_cod)
     for coluna in [
         "Saldo 1",
@@ -379,6 +414,8 @@ def preparar_estoque(df):
         df["Descrição"] = ""
     if "Cons Unitario" in df.columns and "Cons. Unitário" not in df.columns:
         df["Cons. Unitário"] = df["Cons Unitario"]
+    if "Cons. Unitário" not in df.columns:
+        df["Cons. Unitário"] = np.nan
     for coluna, padrao in [("Situação", "Sem Situação"), ("Coleção", "Sem Coleção"),
                            ("Segmento", "Sem Segmento"), ("Tipo Produto", "Sem Tipo")]:
         if coluna in df.columns:
