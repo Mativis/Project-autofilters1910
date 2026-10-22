@@ -154,8 +154,10 @@ proj["Operação"] = coluna_texto(bruto, "Operação Produtiva", "Ope. produtiva
 proj["Status"] = coluna_texto(bruto, "Sts do Pedido", "Status", padrao="Sem Status")
 proj["Status Entrega"] = coluna_texto(bruto, "Status da Entrega", padrao="—")
 proj["Qtd"] = coluna_numero(bruto, "Qtd *", "Qtd").fillna(0.0)
-proj["Saldo"] = coluna_numero(bruto, "Saldo Pedido", "Saldo Atual").fillna(0.0)
+proj["Saldo Calc."] = coluna_numero(bruto, "Saldo Calc.").fillna(0.0)
 proj["Em Trânsito"] = coluna_numero(bruto, "Em Trânsito").fillna(0.0)
+# Saldo em aberto = ((Qtd* - Saldo Calc.) - Em Trânsito), limitado a 0
+proj["Saldo"] = ((proj["Qtd"] - proj["Saldo Calc."]) - proj["Em Trânsito"]).clip(lower=0)
 proj["Dt Agendamento"] = coluna_data(bruto, "Dt. Agendamento", "Dt Agendamento")
 proj["Dt Entrega"] = coluna_data(bruto, "Dt Entrega", "Dt. Entrega")
 proj["Dt Pedido"] = coluna_data(bruto, "Dt Pedido", "Dt. Pedido")
@@ -166,6 +168,8 @@ proj["Data Necessidade"] = (
     .fillna(proj["Dt Entrega"])
     .fillna(proj["Dt Pedido"])
 )
+# Material pré-disposto no mínimo 5 dias antes da data de entrega/agendamento
+proj["Data Necessidade"] = proj["Data Necessidade"] - pd.Timedelta(days=5)
 proj["Origem da Data"] = np.select(
     [
         proj["Dt Agendamento"].notna(),
@@ -233,9 +237,9 @@ with st.sidebar:
     st.header("🔍 Filtros da Projeção")
 
     somente_abertos = st.checkbox(
-        "Somente saldo em aberto (Saldo Pedido > 0)",
+        "Somente com necessidade de material (Saldo > 0)",
         value=True,
-        help="Exclui itens já faturados ou cancelados.",
+        help="Saldo = ((Qtd* - Saldo Calc.) - Em Trânsito). Exclui itens já cobertos.",
     )
     descontar_producao = st.checkbox(
         "Descontar produção já em confecção",
@@ -357,7 +361,7 @@ with colunas_kpi[1]:
         st.metric("📦 Qtd Pedida", fmt_num(qtd_total))
 with colunas_kpi[2]:
     with st.container(border=True):
-        st.metric("💰 Saldo em Aberto", fmt_num(saldo_total), help="Demanda bruta (Saldo Pedido)")
+        st.metric("💰 Saldo em Aberto", fmt_num(saldo_total), help="((Qtd* - Saldo Calc.) - Em Trânsito)")
 with colunas_kpi[3]:
     with st.container(border=True):
         st.metric(
@@ -546,6 +550,8 @@ colunas_detalhe = [
     "Marca",
     "Operação",
     "Qtd",
+    "Saldo Calc.",
+    "Em Trânsito",
     "Saldo",
     "Coberto pela Produção",
     "Necessidade",
@@ -582,6 +588,8 @@ with st.container(border=True):
                 "Chegada material": lambda d: d["Chegada material"].map(fmt_data),
                 "Data necessidade": lambda d: d["Data necessidade"].map(fmt_data),
                 "Qtd": lambda d: d["Qtd"].map(fmt_num),
+                "Saldo Calc.": lambda d: d["Saldo Calc."].map(fmt_num),
+                "Em Trânsito": lambda d: d["Em Trânsito"].map(fmt_num),
                 "Saldo": lambda d: d["Saldo"].map(fmt_num),
                 "Coberto pela Produção": lambda d: d["Coberto pela Produção"].map(fmt_num),
                 "Necessidade": lambda d: d["Necessidade"].map(fmt_num),
@@ -596,11 +604,12 @@ with st.expander("ℹ️ Como o planejamento é calculado", expanded=False):
     st.markdown(
         f"""
 1. **Data de necessidade** de cada item: `Dt. Agendamento` → se vazia, `Dt Entrega` → se vazia, `Dt Pedido`.
-2. As datas anteriores a **{inicio.strftime('%d/%m/%Y')}** são reagendadas para essa data.
-3. A **necessidade líquida** desconta, por código, o saldo dos pedidos que já possuem
+2. O material é **pré-disposto 5 dias antes** dessa data.
+3. O **saldo em aberto** é calculado por `((Qtd* - Saldo Calc.) - Em Trânsito)`.
+4. A **necessidade líquida** desconta, por código, o saldo dos pedidos que já possuem
    confecção na planilha de Pedidos (os itens mais urgentes são cobertos primeiro).
-4. Os itens são agrupados na semana da data de necessidade.
-5. Cada semana recebe uma data de chegada de material; se a diferença para a chegada
+5. Os itens são agrupados na semana da data de necessidade.
+6. Cada semana recebe uma data de chegada de material; se a diferença para a chegada
    anterior for menor que **{int(intervalo_semanas)} semana(s)**, a chegada é empurrada
    para `última chegada + {int(intervalo_semanas)} semana(s)`.
 """
@@ -622,6 +631,8 @@ def montar_excel():
             "Marca",
             "Operação",
             "Qtd",
+            "Saldo Calc.",
+            "Em Trânsito",
             "Saldo",
             "Coberto pela Produção",
             "Necessidade",
@@ -654,7 +665,7 @@ with colunas_export[0]:
     st.download_button(
         "📥 Baixar CSV — Planejamento",
         data=detalhe[
-            ["Lote", "Chegada Material", "Pedido", "Cód Confec", "Produto", "Qtd", "Saldo", "Necessidade"]
+            ["Lote", "Chegada Material", "Pedido", "Cód Confec", "Produto", "Qtd", "Saldo Calc.", "Em Trânsito", "Saldo", "Necessidade"]
         ].to_csv(index=False, sep=";", decimal=",", encoding="utf-8-sig"),
         file_name=f"projecao_futuro_{date.today().strftime('%Y-%m-%d')}.csv",
         mime="text/csv",
