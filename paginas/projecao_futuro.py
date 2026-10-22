@@ -154,7 +154,7 @@ proj["Operação"] = coluna_texto(bruto, "Operação Produtiva", "Ope. produtiva
 proj["Status"] = coluna_texto(bruto, "Sts do Pedido", "Status", padrao="Sem Status")
 proj["Status Entrega"] = coluna_texto(bruto, "Status da Entrega", padrao="—")
 proj["Qtd"] = coluna_numero(bruto, "Qtd *", "Qtd").fillna(0.0)
-proj["Saldo"] = coluna_numero(bruto, "Saldo Pedido", "Saldo Calc.", "Saldo Atual").fillna(0.0)
+proj["Saldo"] = coluna_numero(bruto, "Saldo Pedido", "Saldo Atual").fillna(0.0)
 proj["Em Trânsito"] = coluna_numero(bruto, "Em Trânsito").fillna(0.0)
 proj["Dt Agendamento"] = coluna_data(bruto, "Dt. Agendamento", "Dt Agendamento")
 proj["Dt Entrega"] = coluna_data(bruto, "Dt Entrega", "Dt. Entrega")
