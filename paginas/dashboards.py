@@ -110,6 +110,16 @@ with st.sidebar:
         ),
     )
 
+    st.markdown("---")
+    st.header("🚫 Exclusões")
+    codigos_todos = sorted(df_pedidos["Cód Confec"].astype(str).unique().tolist())
+    codigos_ignorar = st.multiselect(
+        "Ignorar Cód Confec",
+        options=codigos_todos,
+        default=[],
+        help="Remove os códigos selecionados da visualização em todos os gráficos e tabelas.",
+    )
+
 # ==================== FILTRAGEM ====================
 
 df = df_pedidos.copy()
@@ -123,6 +133,9 @@ if data_ini is not None and "Dt Emissao" in df.columns:
 if usar_saldo2 and df_estoque is not None:
     codigos = codigos_saldo2_negativo(df_estoque)
     df = df[df["Cód Confec_norm"].isin(codigos)]
+if codigos_ignorar:
+    codigos_ignorar_norm = set(str(c).strip() for c in codigos_ignorar)
+    df = df[~df["Cód Confec"].astype(str).isin(codigos_ignorar_norm)]
 
 if df.empty:
     st.warning("Nenhum pedido encontrado com os filtros selecionados.")
@@ -189,7 +202,7 @@ st.markdown(
 
 # ==================== 1. CONCENTRAÇÃO POR MARCA ====================
 
-st.markdown("### 🏷️ Concentração por Marca")
+st.markdown("### 🏷️ Top Marcas por Volume")
 
 df_marca = (
     df.groupby("Marca")
@@ -207,37 +220,53 @@ df_marca["Acumulado %"] = df_marca["% Pedido"].cumsum()
 
 top_marcas = df_marca.head(top_n).copy()
 
-chart_cols = st.columns([1.4, 1])
+chart_cols = st.columns([1.6, 1])
 with chart_cols[0]:
     with st.container(border=True):
-        fig = px.bar(
-            top_marcas.sort_values("% Pedido"),
-            x="Qtd",
-            y="Marca",
+        fig = go.Figure()
+        fig.add_bar(
+            y=top_marcas["Marca"],
+            x=top_marcas["Qtd"],
+            name="Unidades Pedidas",
             orientation="h",
-            text=top_marcas["% Pedido"].map(lambda v: f"{v * 100:1.0f}%"),
-            color="% Pedido",
-            color_continuous_scale=["#dfe6fb", "#667eea"],
-            labels={"Qtd": "Unidades pedidas", "Marca": "", "% Pedido": "% do total"},
-            title=f"Top {len(top_marcas)} Marcas por Volume",
-            template=template_plotly(),
+            marker=dict(
+                color=top_marcas["Qtd"],
+                colorscale=[[0, "rgba(99, 102, 241, 0.4)"], [1, "#6366f1"]],
+                showscale=False,
+            ),
+            text=top_marcas["Qtd"].apply(lambda v: f"{fmt_num(v)}"),
+            textposition="outside",
+            hovertemplate="<b>%{y}</b><br>Unidades: %{x:,.0f}<br>Participação: %{customdata:.1%}<extra></extra>",
+            customdata=top_marcas["% Pedido"],
         )
-        fig.update_layout(height=420, coloraxis_showscale=False, margin=dict(t=60, l=10, r=10, b=10))
-        fig.update_traces(textposition="outside", cliponaxis=False)
+        fig.update_layout(
+            template=template_plotly(),
+            height=max(420, 32 * len(top_marcas) + 80),
+            title=f"Ranking Top {len(top_marcas)} Marcas por Volume",
+            xaxis_title="Unidades Pedidas",
+            yaxis_title="",
+            margin=dict(t=70, l=10, r=80, b=10),
+            showlegend=False,
+        )
         st.plotly_chart(fig, use_container_width=True)
 
 with chart_cols[1]:
     with st.container(border=True):
-        fig = px.treemap(
-            df_marca,
-            path=["Marca"],
+        fig = px.pie(
+            df_marca.head(min(top_n, 10)),
+            names="Marca",
             values="Qtd",
-            color="% Pedido",
-            color_continuous_scale=["#dfe6fb", "#667eea"],
-            title="Participação por Marca",
+            color_discrete_sequence=cores_grafico(),
+            hole=0.6,
+            title="Distribuição Top 10 Marcas",
             template=template_plotly(),
         )
-        fig.update_layout(height=420, margin=dict(t=60, l=10, r=10, b=10))
+        fig.update_traces(
+            textposition="inside",
+            textinfo="percent",
+            hovertemplate="<b>%{label}</b><br>Qtd: %{value:,.0f}<br>Participação: %{percent}<extra></extra>",
+        )
+        fig.update_layout(height=max(420, 32 * len(top_marcas) + 80), margin=dict(t=70, l=10, r=10, b=10))
         st.plotly_chart(fig, use_container_width=True)
 
 with st.expander("📋 Ver tabela detalhada por marca", expanded=False):
@@ -338,46 +367,91 @@ with st.expander("📋 Ver tabela detalhada por código de confecção", expande
 
 # ==================== 3. EVOLUÇÃO E STATUS ====================
 
-st.markdown("### 🧾 Evolução de Pedidos")
+st.markdown("### 🧾 Evolução e Status dos Pedidos")
 
-chart_cols2 = st.columns([1.3, 1])
+chart_cols2 = st.columns([1.4, 1])
 with chart_cols2[0]:
     with st.container(border=True):
         if "Dt Emissao" in df.columns and df["Dt Emissao"].notna().any():
             df_mes = (
                 df.dropna(subset=["Dt Emissao"])
                 .groupby(df["Dt Emissao"].dt.to_period("M").dt.to_timestamp())
-                .agg(Qtd=("Qtd", "sum"), Pedidos=("Compra", "count"))
+                .agg(Qtd=("Qtd", "sum"), Saldo=("Saldo", "sum"), Pedidos=("Compra", "count"))
                 .reset_index()
                 .rename(columns={"Dt Emissao": "Mês"})
             )
-            fig = px.area(
-                df_mes,
-                x="Mês",
-                y="Qtd",
-                color_discrete_sequence=["#667eea"],
-                title="Evolução Mensal por Emissão",
-                template=template_plotly(),
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    x=df_mes["Mês"],
+                    y=df_mes["Qtd"],
+                    mode="lines+markers",
+                    name="Qtd Pedida",
+                    line=dict(color="#6366f1", width=3),
+                    marker=dict(size=8),
+                    fill="tozeroy",
+                    fillcolor="rgba(99, 102, 241, 0.08)",
+                    hovertemplate="<b>%{x|%m/%Y}</b><br>Qtd: %{y:,.0f}<extra></extra>",
+                )
             )
-            fig.update_layout(height=380, margin=dict(t=60, l=10, r=10, b=10))
+            fig.add_trace(
+                go.Scatter(
+                    x=df_mes["Mês"],
+                    y=df_mes["Saldo"],
+                    mode="lines+markers",
+                    name="Saldo em Aberto",
+                    line=dict(color="#f59e0b", width=3),
+                    marker=dict(size=8),
+                    hovertemplate="<b>%{x|%m/%Y}</b><br>Saldo: %{y:,.0f}<extra></extra>",
+                )
+            )
+            fig.update_layout(
+                template=template_plotly(),
+                height=400,
+                title="Evolução Mensal — Qtd Pedida x Saldo em Aberto",
+                xaxis_title="Mês",
+                yaxis_title="Unidades",
+                legend=dict(orientation="h", y=1.12),
+                margin=dict(t=70, l=10, r=10, b=10),
+            )
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("O arquivo de Pedidos não possui a coluna `Dt Emissao`.")
 
 with chart_cols2[1]:
     with st.container(border=True):
-        df_status = df.groupby("Status").agg(Qtd=("Qtd", "sum")).reset_index()
-        fig = px.pie(
-            df_status,
-            names="Status",
-            values="Qtd",
-            color_discrete_sequence=cores_grafico(),
-            hole=0.5,
-            title="Distribuição por Status",
-            template=template_plotly(),
+        df_status = (
+            df.groupby("Status")
+            .agg(Qtd=("Qtd", "sum"), Pedidos=("Compra", "count"))
+            .reset_index()
+            .sort_values("Qtd", ascending=False)
         )
-        fig.update_layout(height=380, margin=dict(t=60, l=10, r=10, b=10))
-        fig.update_traces(textposition='inside', textinfo='percent+label')
+        fig = go.Figure()
+        fig.add_trace(
+            go.Bar(
+                y=df_status["Status"],
+                x=df_status["Qtd"],
+                orientation="h",
+                marker=dict(
+                    color=df_status["Qtd"],
+                    colorscale=[[0, "rgba(99, 102, 241, 0.4)"], [1, "#6366f1"]],
+                    showscale=False,
+                ),
+                text=df_status.apply(lambda r: f"{fmt_num(r['Qtd'])} ({r['Pedidos']} ped.)", axis=1),
+                textposition="outside",
+                hovertemplate="<b>%{y}</b><br>Qtd: %{x:,.0f}<br>Pedidos: %{customdata}<extra></extra>",
+                customdata=df_status["Pedidos"],
+            )
+        )
+        fig.update_layout(
+            template=template_plotly(),
+            height=400,
+            title="Distribuição por Status",
+            xaxis_title="Unidades",
+            yaxis_title="",
+            margin=dict(t=70, l=10, r=90, b=10),
+            showlegend=False,
+        )
         st.plotly_chart(fig, use_container_width=True)
 
 # Top Confecções
@@ -422,12 +496,12 @@ with st.container(border=True):
 st.markdown("### 📈 Análise de Eficácia (Saldo ÷ Qtd)")
 
 FAIXAS = [
-    ("🔴 Sem saldo (0%)", 0.0, 0.0001),
-    ("🟠 Quase encerrado (0-25%)", 0.0001, 0.25),
-    ("🟡 Parcial (25-50%)", 0.25, 0.5),
-    ("🟢 Maior parte aberta (50-75%)", 0.5, 0.75),
-    ("🔵 Integralmente aberto (75-100%)", 0.75, 1.0001),
-    ("⚫ Acima de 100%", 1.0001, np.inf),
+    ("Sem saldo (0%)", 0.0, 0.0001),
+    ("Quase encerrado (0-25%)", 0.0001, 0.25),
+    ("Parcial (25-50%)", 0.25, 0.5),
+    ("Maior parte aberta (50-75%)", 0.5, 0.75),
+    ("Integralmente aberto (75-100%)", 0.75, 1.0001),
+    ("Acima de 100%", 1.0001, np.inf),
 ]
 
 
@@ -450,72 +524,31 @@ df_faixa = (
     .fillna(0)
 )
 
-chart_cols3 = st.columns(2)
-with chart_cols3[0]:
-    with st.container(border=True):
-        fig = px.bar(
-            df_faixa,
-            x="Faixa",
-            y="Pedidos",
-            color="Saldo",
-            color_continuous_scale=["#fdecea", "#c62828"],
-            labels={"Faixa": "", "Pedidos": "Pedidos"},
-            title="Distribuição por Faixa de Eficácia",
-            template=template_plotly(),
-        )
-        fig.update_layout(height=400, coloraxis_showscale=False, margin=dict(t=60, l=10, r=10, b=10))
-        st.plotly_chart(fig, use_container_width=True)
-
-with chart_cols3[1]:
-    with st.container(border=True):
-        ef_marca = (
-            df.groupby("Marca")
-            .agg(Qtd=("Qtd", "sum"), Saldo=("Saldo", "sum"))
-            .reset_index()
-        )
-        ef_marca["Eficácia"] = np.where(ef_marca["Qtd"] > 0, ef_marca["Saldo"] / ef_marca["Qtd"], np.nan)
-        ef_marca = ef_marca.dropna(subset=["Eficácia"]).sort_values("Eficácia", ascending=False)
-        fig = px.bar(
-            ef_marca,
-            x="Eficácia",
-            y="Marca",
-            orientation="h",
-            color="Eficácia",
-            color_continuous_scale=["#2e7d32", "#ff9800", "#c62828"],
-            labels={"Eficácia": "Eficácia (Saldo ÷ Qtd)", "Marca": ""},
-            title="Eficácia Média por Marca",
-            template=template_plotly(),
-        )
-        fig.update_layout(height=400, coloraxis_showscale=False, margin=dict(t=60, l=10, r=10, b=10))
-        st.plotly_chart(fig, use_container_width=True)
-
 with st.container(border=True):
-    itens_baixa = (
-        df.dropna(subset=["Eficacia"])
-        .groupby(["Cód Confec", "Confeccionado"])
-        .agg(Qtd=("Qtd", "sum"), Saldo=("Saldo", "sum"), Pedidos=("Compra", "count"))
-        .reset_index()
+    cores_faixa = ["#22c55e", "#84cc16", "#f59e0b", "#f97316", "#ef4444", "#dc2626", "#94a3b8"]
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=df_faixa["Faixa"],
+            y=df_faixa["Pedidos"],
+            name="Pedidos",
+            marker=dict(color=cores_faixa[:len(df_faixa)]),
+            text=df_faixa["Pedidos"].apply(lambda v: f"{fmt_num(v)}"),
+            textposition="outside",
+            hovertemplate="<b>%{x}</b><br>Pedidos: %{y:,.0f}<br>Qtd: %{customdata[0]:,.0f}<br>Saldo: %{customdata[1]:,.0f}<extra></extra>",
+            customdata=np.column_stack((df_faixa["Qtd"], df_faixa["Saldo"])),
+        )
     )
-    itens_baixa["Eficácia"] = np.where(
-        itens_baixa["Qtd"] > 0, itens_baixa["Saldo"] / itens_baixa["Qtd"], np.nan
-    )
-    itens_baixa = itens_baixa.dropna(subset=["Eficácia"]).sort_values("Eficácia")
-    itens_baixa["Descrição"] = (
-        itens_baixa["Confeccionado"].astype(str).str.slice(0, 42) + "…"
-    )
-
-    fig = px.bar(
-        itens_baixa.head(top_n),
-        x="Eficácia",
-        y="Descrição",
-        orientation="h",
-        color="Eficácia",
-        color_continuous_scale=["#c62828", "#ff9800", "#2e7d32"],
-        labels={"Eficácia": "Eficácia (Saldo ÷ Qtd)", "Descrição": ""},
-        title=f"Itens com Menor Eficácia (Top {min(top_n, len(itens_baixa))})",
+    fig.update_layout(
         template=template_plotly(),
+        height=420,
+        title="Distribuição dos Pedidos por Faixa de Eficácia",
+        xaxis_title="",
+        yaxis_title="Nº de Pedidos",
+        margin=dict(t=70, l=10, r=10, b=80),
+        showlegend=False,
     )
-    fig.update_layout(height=450, coloraxis_showscale=False, margin=dict(t=60, l=10, r=10, b=10))
+    fig.update_xaxes(tickangle=-30)
     st.plotly_chart(fig, use_container_width=True)
 
 # ==================== 5. DETALHAMENTO POR CONFECÇÃO ====================
