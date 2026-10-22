@@ -36,7 +36,7 @@ from nucleo import (
 
 st.set_page_config(
     page_title="Análise de Estoque",
-    page_icon="🏭",
+    page_icon="📦",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -56,7 +56,7 @@ df_estoque = preparar_estoque(df_estoque)
 df_pedidos = preparar_pedidos(df_pedidos) if df_pedidos is not None else None
 
 cabecalho(
-    "🏭 Análise de Estoque por item",
+    "📦 Análise de Estoque por item",
     "Saldo 1 = físico · Saldo 2 = físico + em trânsito · Saldo 3 = físico + trânsito + em confecção — "
     f"data de referência: {date.today().strftime('%d/%m/%Y')}",
 )

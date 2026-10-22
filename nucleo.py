@@ -51,8 +51,8 @@ def template_plotly():
 def cores_grafico():
     """Paleta de cores usada nos gráficos."""
     return [
-        "#667eea", "#764ba2", "#f44336", "#ff9800", "#4caf50", "#00bcd4",
-        "#e91e63", "#795548", "#607d8b", "#9c27b0", "#009688", "#cddc39",
+        "#6366f1", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444",
+        "#ec4899", "#14b8a6", "#f97316", "#84cc16", "#3b82f6", "#a855f7",
     ]
 
 # ==================== CONSTANTES ====================
@@ -403,69 +403,218 @@ def saldo2_por_codigo(df_estoque):
 def _cores_pagina():
     if tema_escuro():
         return {
-            "surface": "#1a2332",
-            "border": "#2d3a4f",
-            "text": "#e7ecf3",
-            "text_soft": "#a9b8cf",
-            "chip": "#243044",
-            "shadow": "rgba(0, 0, 0, 0.55)",
-            "pos": "#4caf50",
-            "neg": "#f44336",
-            "warn": "#ff9800",
+            "surface": "#0f1623",
+            "surface-2": "#131c2e",
+            "border": "#1e293b",
+            "text": "#e2e8f0",
+            "text_soft": "#94a3b8",
+            "chip": "#1e293b",
+            "shadow": "rgba(0, 0, 0, 0.4)",
+            "pos": "#22c55e",
+            "neg": "#ef4444",
+            "warn": "#f59e0b",
+            "accent": "#6366f1",
+            "accent-2": "#8b5cf6",
         }
     return {
         "surface": "#ffffff",
-        "border": "#d9dfec",
-        "text": "#3d4455",
-        "text_soft": "#5a6172",
-        "chip": "#f0f2f8",
-        "shadow": "rgba(0, 0, 0, 0.06)",
-        "pos": "#2e7d32",
-        "neg": "#c62828",
-        "warn": "#ef6c00",
+        "surface-2": "#f8fafc",
+        "border": "#e2e8f0",
+        "text": "#0f172a",
+        "text_soft": "#64748b",
+        "chip": "#f1f5f9",
+        "shadow": "rgba(15, 23, 42, 0.04)",
+        "pos": "#16a34a",
+        "neg": "#dc2626",
+        "warn": "#d97706",
+        "accent": "#6366f1",
+        "accent-2": "#8b5cf6",
     }
 
 
 CSS_COMUM = """
-    .db-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: #ffffff;
-        padding: 1.4rem 2rem;
-        border-radius: 15px;
-        margin-bottom: 1.2rem;
-        box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+    :root {
+        --radius-sm: 8px;
+        --radius-md: 12px;
+        --radius-lg: 16px;
     }
-    .db-header h1 { margin: 0; font-size: 1.55rem; }
-    .db-header p { margin: .35rem 0 0 0; font-size: .88rem; opacity: .92; }
-    .db-card {
+    
+    .main .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        max-width: 1400px;
+    }
+    
+    /* Modern Header */
+    .db-header {
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+        color: #ffffff;
+        padding: 2rem 2.5rem;
+        border-radius: var(--radius-lg);
+        margin-bottom: 2rem;
+        box-shadow: 0 20px 60px -20px rgba(99, 102, 241, 0.5);
+        position: relative;
+        overflow: hidden;
+    }
+    .db-header::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -10%;
+        width: 300px;
+        height: 300px;
+        background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
+        border-radius: 50%;
+    }
+    .db-header::after {
+        content: '';
+        position: absolute;
+        bottom: -30%;
+        left: -5%;
+        width: 200px;
+        height: 200px;
+        background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+        border-radius: 50%;
+    }
+    .db-header h1 { 
+        margin: 0; 
+        font-size: 1.8rem; 
+        font-weight: 800; 
+        letter-spacing: -0.02em;
+        position: relative; 
+        z-index: 1; 
+    }
+    .db-header p { 
+        margin: 0.5rem 0 0 0; 
+        font-size: 0.95rem; 
+        opacity: 0.95; 
+        position: relative; 
+        z-index: 1;
+        font-weight: 500;
+    }
+    
+    /* Modern Cards */
+    [data-testid="stMetric"] {
         background: var(--db-surface);
         border: 1px solid var(--db-border);
-        border-radius: 12px;
-        padding: .85rem 1rem;
-        box-shadow: 0 2px 10px var(--db-shadow);
+        border-radius: var(--radius-md);
+        padding: 1.25rem 1.5rem;
+        box-shadow: 0 1px 3px var(--db-shadow);
+        transition: all 0.2s ease;
+        height: 100%;
     }
-    .db-card .db-titulo {
-        font-size: .68rem; text-transform: uppercase; letter-spacing: .06em;
-        color: var(--db-text-soft); font-weight: 800; margin-bottom: .3rem;
+    [data-testid="stMetric"]:hover {
+        box-shadow: 0 4px 12px var(--db-shadow);
+        border-color: rgba(99, 102, 241, 0.3);
     }
-    .db-card .db-valor { font-size: 1.4rem; font-weight: 800; color: var(--db-text); }
-    .db-card .db-nota { font-size: .76rem; color: var(--db-text-soft); margin-top: .15rem; }
+    [data-testid="stMetricLabel"] {
+        font-size: 0.75rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 700 !important;
+        color: var(--db-text-soft) !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.8rem !important;
+        font-weight: 800 !important;
+        color: var(--db-text) !important;
+        letter-spacing: -0.02em;
+    }
+    
+    /* Container with border */
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background: var(--db-surface);
+        border: 1px solid var(--db-border);
+        border-radius: var(--radius-md);
+        box-shadow: 0 1px 3px var(--db-shadow);
+        padding: 1.5rem;
+        transition: all 0.2s ease;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"]:hover {
+        box-shadow: 0 4px 12px var(--db-shadow);
+    }
+    
+    /* Section Headers */
     .db-secao {
-        font-size: 1.08rem; font-weight: 800; color: var(--db-text);
-        margin: 1.5rem 0 .4rem 0; border-left: 4px solid #667eea; padding-left: .6rem;
+        font-size: 1.25rem; 
+        font-weight: 800; 
+        color: var(--db-text);
+        margin: 2.5rem 0 1rem 0; 
+        letter-spacing: -0.01em;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
     }
+    
+    /* Alerts */
     .db-aviso {
-        background: var(--db-chip); border: 1px solid var(--db-border);
-        border-radius: 10px; padding: .6rem .9rem; font-size: .82rem; color: var(--db-text-soft);
+        background: linear-gradient(90deg, rgba(99, 102, 241, 0.08) 0%, transparent 100%);
+        border-left: 3px solid #6366f1;
+        border-radius: var(--radius-sm);
+        padding: 0.75rem 1rem;
+        font-size: 0.875rem; 
+        color: var(--db-text-soft);
+        margin: 1rem 0;
     }
+    
+    /* File upload status */
     .db-file-ok {
-        background: var(--db-chip); border: 1px solid var(--db-border);
-        border-radius: 10px; padding: .5rem .75rem; font-size: .82rem;
-        color: var(--db-text); margin-bottom: .35rem;
+        background: linear-gradient(90deg, rgba(34, 197, 94, 0.08) 0%, transparent 100%);
+        border-left: 3px solid #22c55e;
+        border-radius: var(--radius-sm);
+        padding: 0.6rem 0.9rem; 
+        font-size: 0.875rem;
+        color: var(--db-text); 
+        margin-bottom: 0.5rem;
     }
     .db-file-name {
-        display: block; font-size: .74rem; color: var(--db-text-soft);
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        display: block; 
+        font-size: 0.75rem; 
+        color: var(--db-text-soft);
+        overflow: hidden; 
+        text-overflow: ellipsis; 
+        white-space: nowrap;
+        margin-top: 0.25rem;
+    }
+    
+    /* Dataframes */
+    [data-testid="stDataFrame"] {
+        border-radius: var(--radius-md);
+        overflow: hidden;
+        border: 1px solid var(--db-border);
+    }
+    
+    /* Buttons */
+    .stButton > button {
+        border-radius: var(--radius-sm);
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
+    
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0.5rem;
+        background: var(--db-surface-2);
+        padding: 0.375rem;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--db-border);
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: var(--radius-sm);
+        font-weight: 600;
+        padding: 0.5rem 1rem;
+    }
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        color: white !important;
+    }
+    
+    /* Expander */
+    .streamlit-expanderHeader {
+        background: var(--db-surface);
+        border: 1px solid var(--db-border);
+        border-radius: var(--radius-md);
+        font-weight: 600;
     }
 """
 
@@ -475,10 +624,13 @@ def aplicar_estilo_comum():
     cores = _cores_pagina()
     variaveis = (
         ":root{"
-        f"--db-surface:{cores['surface']};--db-border:{cores['border']};"
+        f"--db-surface:{cores['surface']};"
+        f"--db-surface-2:{cores.get('surface-2', cores['chip'])};"
+        f"--db-border:{cores['border']};"
         f"--db-text:{cores['text']};--db-text-soft:{cores['text_soft']};"
         f"--db-chip:{cores['chip']};--db-shadow:{cores['shadow']};"
         f"--db-pos:{cores['pos']};--db-neg:{cores['neg']};--db-warn:{cores['warn']};"
+        f"--db-accent:{cores.get('accent', '#6366f1')};"
         "}"
     )
     st.markdown(f"<style>{variaveis}{CSS_COMUM}</style>", unsafe_allow_html=True)

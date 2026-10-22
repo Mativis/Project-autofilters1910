@@ -42,49 +42,49 @@ from nucleo import (
 
 # ==================== TEMA (claro / escuro) ====================
 PALETA_ESCURO = """
-            --kb-surface: #1a2332;
-            --kb-surface-2: #202b3d;
-            --kb-row-alt: #1c2635;
-            --kb-row-hover: #243044;
-            --kb-head-from: #243044;
-            --kb-head-to: #1d2739;
-            --kb-sum-from: #1f2937;
-            --kb-sum-to: #243044;
-            --kb-border: #2d3a4f;
-            --kb-border-soft: #2a3648;
-            --kb-text: #e7ecf3;
-            --kb-text-soft: #a9b8cf;
-            --kb-chip-bg: #243044;
-            --kb-chip-border: #33415c;
-            --kb-shadow: rgba(0, 0, 0, 0.55);
-            --kb-info-from: #10314b;
-            --kb-info-to: #0b2233;
-            --kb-info-text: #d6ecff;
-            --kb-qe: #ffb74d;
-            --kb-qe-bg: rgba(255, 183, 77, 0.12);
+            --kb-surface: #0f1623;
+            --kb-surface-2: #131c2e;
+            --kb-row-alt: #111827;
+            --kb-row-hover: #1e293b;
+            --kb-head-from: #1e293b;
+            --kb-head-to: #131c2e;
+            --kb-sum-from: #131c2e;
+            --kb-sum-to: #1e293b;
+            --kb-border: #1e293b;
+            --kb-border-soft: #1a2332;
+            --kb-text: #e2e8f0;
+            --kb-text-soft: #94a3b8;
+            --kb-chip-bg: #1e293b;
+            --kb-chip-border: #334155;
+            --kb-shadow: rgba(0, 0, 0, 0.4);
+            --kb-info-from: rgba(99, 102, 241, 0.15);
+            --kb-info-to: rgba(139, 92, 246, 0.1);
+            --kb-info-text: #c7d2fe;
+            --kb-qe: #fbbf24;
+            --kb-qe-bg: rgba(251, 191, 36, 0.12);
 """
 
 PALETA_CLARO = """
             --kb-surface: #ffffff;
-            --kb-surface-2: #f8fafd;
-            --kb-row-alt: #fbfcfe;
-            --kb-row-hover: #f3f6fd;
-            --kb-head-from: #f5f7fa;
-            --kb-head-to: #e9edf6;
-            --kb-sum-from: #f5f7fa;
-            --kb-sum-to: #e4e9f2;
-            --kb-border: #d9dfec;
-            --kb-border-soft: #eef1f7;
-            --kb-text: #3d4455;
-            --kb-text-soft: #5a6172;
-            --kb-chip-bg: #f0f2f8;
-            --kb-chip-border: #dde2ee;
-            --kb-shadow: rgba(0, 0, 0, 0.06);
-            --kb-info-from: #e3f2fd;
-            --kb-info-to: #bbdefb;
-            --kb-info-text: #0d3c61;
-            --kb-qe: #b26a00;
-            --kb-qe-bg: #fff6e6;
+            --kb-surface-2: #f8fafc;
+            --kb-row-alt: #f9fafb;
+            --kb-row-hover: #f1f5f9;
+            --kb-head-from: #f8fafc;
+            --kb-head-to: #f1f5f9;
+            --kb-sum-from: #f8fafc;
+            --kb-sum-to: #f1f5f9;
+            --kb-border: #e2e8f0;
+            --kb-border-soft: #f1f5f9;
+            --kb-text: #0f172a;
+            --kb-text-soft: #64748b;
+            --kb-chip-bg: #f1f5f9;
+            --kb-chip-border: #e2e8f0;
+            --kb-shadow: rgba(15, 23, 42, 0.04);
+            --kb-info-from: rgba(99, 102, 241, 0.08);
+            --kb-info-to: rgba(139, 92, 246, 0.05);
+            --kb-info-text: #4338ca;
+            --kb-qe: #b45309;
+            --kb-qe-bg: #fffbeb;
 """
 
 
@@ -93,7 +93,7 @@ def pagina_kanban():
     # Configurar página
     st.set_page_config(
         page_title="Kanban de Confecção",
-        page_icon="📌",
+        page_icon="📋",
         layout="wide",
         initial_sidebar_state="expanded",
     )
@@ -105,22 +105,28 @@ def pagina_kanban():
         """
         <style>
             :root {
-                --kb-primary: #667eea;
-                --kb-secondary: #764ba2;
-                --kb-atrasado: #b71c1c;
-                --kb-alta: #f44336;
-                --kb-media: #ff9800;
-                --kb-baixa: #4caf50;
+                --kb-primary: #6366f1;
+                --kb-secondary: #8b5cf6;
+                --kb-atrasado: #dc2626;
+                --kb-alta: #ef4444;
+                --kb-media: #f59e0b;
+                --kb-baixa: #22c55e;
     /*__PALETA__*/
+            }
+            
+            .main .block-container {
+                padding-top: 2rem;
+                padding-bottom: 2rem;
+                max-width: 1600px;
             }
 
             .kb-header {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
                 color: white;
-                padding: 1.8rem 2.2rem;
-                border-radius: 15px;
+                padding: 2rem 2.5rem;
+                border-radius: 16px;
                 margin-bottom: 1.5rem;
-                box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+                box-shadow: 0 20px 60px -20px rgba(99, 102, 241, 0.6);
                 position: relative;
                 overflow: hidden;
             }
@@ -129,144 +135,164 @@ def pagina_kanban():
                 position: absolute;
                 top: -50%;
                 right: -10%;
-                width: 280px;
-                height: 280px;
-                background: rgba(255,255,255,0.1);
+                width: 320px;
+                height: 320px;
+                background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
                 border-radius: 50%;
             }
-            .kb-header h1 { margin: 0; font-size: 2.1rem; font-weight: 800; position: relative; z-index: 1; }
-            .kb-header p { margin: 0.6rem 0 0 0; opacity: 0.95; font-size: 1.05rem; position: relative; z-index: 1; }
+            .kb-header::after {
+                content: '';
+                position: absolute;
+                bottom: -30%;
+                left: -5%;
+                width: 200px;
+                height: 200px;
+                background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+                border-radius: 50%;
+            }
+            .kb-header h1 { margin: 0; font-size: 2rem; font-weight: 800; position: relative; z-index: 1; letter-spacing: -0.02em; }
+            .kb-header p { margin: 0.5rem 0 0 0; opacity: 0.95; font-size: 1rem; position: relative; z-index: 1; font-weight: 500; }
 
             .kb-legend {
                 display: flex;
-                gap: 0.8rem;
+                gap: 0.6rem;
                 flex-wrap: wrap;
-                margin-bottom: 1.2rem;
+                margin-bottom: 1.5rem;
             }
             .kb-legend-item {
                 display: inline-flex;
                 align-items: center;
-                gap: 0.4rem;
+                gap: 0.5rem;
                 background: var(--kb-surface);
                 border: 1px solid var(--kb-border);
                 color: var(--kb-text);
-                border-radius: 20px;
-                padding: 0.35rem 0.9rem;
-                font-size: 0.85rem;
+                border-radius: 999px;
+                padding: 0.4rem 1rem;
+                font-size: 0.8rem;
                 font-weight: 600;
-                box-shadow: 0 2px 8px var(--kb-shadow);
+                box-shadow: 0 1px 3px var(--kb-shadow);
+                transition: all 0.2s ease;
             }
-            .kb-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+            .kb-legend-item:hover {
+                box-shadow: 0 4px 12px var(--kb-shadow);
+                border-color: rgba(99, 102, 241, 0.3);
+            }
+            .kb-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 3px rgba(0,0,0,0.02); }
             .kb-dot.atrasado { background: var(--kb-atrasado); }
             .kb-dot.alta { background: var(--kb-alta); }
             .kb-dot.media { background: var(--kb-media); }
             .kb-dot.baixa { background: var(--kb-baixa); }
 
             .kb-tab-summary {
-                background: linear-gradient(135deg, var(--kb-sum-from) 0%, var(--kb-sum-to) 100%);
+                background: linear-gradient(90deg, rgba(99, 102, 241, 0.08) 0%, transparent 100%);
                 border: 1px solid var(--kb-border);
-                border-radius: 10px;
-                padding: 0.7rem 1rem;
-                margin: 0.2rem 0 1rem 0;
-                font-size: 0.88rem;
+                border-left: 3px solid #6366f1;
+                border-radius: 12px;
+                padding: 0.8rem 1.2rem;
+                margin: 0.5rem 0 1rem 0;
+                font-size: 0.875rem;
                 color: var(--kb-text-soft);
-                font-weight: 600;
+                font-weight: 500;
             }
-            .kb-tab-summary b { color: var(--kb-text); }
+            .kb-tab-summary b { color: var(--kb-text); font-weight: 700; }
 
             .kb-badge {
-                display: inline-block;
-                padding: 0.18rem 0.6rem;
-                border-radius: 20px;
-                font-size: 0.72rem;
-                font-weight: 700;
+                display: inline-flex;
+                align-items: center;
+                padding: 0.2rem 0.65rem;
+                border-radius: 999px;
+                font-size: 0.7rem;
+                font-weight: 600;
                 color: white;
                 white-space: nowrap;
+                letter-spacing: 0.01em;
             }
-            .kb-badge.atrasado { background: var(--kb-atrasado); }
-            .kb-badge.alta { background: var(--kb-alta); }
-            .kb-badge.media { background: var(--kb-media); }
-            .kb-badge.baixa { background: var(--kb-baixa); }
+            .kb-badge.atrasado { background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3); }
+            .kb-badge.alta { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3); }
+            .kb-badge.media { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3); }
+            .kb-badge.baixa { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3); }
 
             /* Planilha — uma linha por item */
             .kb-sheet-wrap {
                 overflow-x: auto;
                 background: var(--kb-surface);
                 border: 1px solid var(--kb-border);
-                border-radius: 12px;
-                box-shadow: 0 2px 12px var(--kb-shadow);
-                margin-bottom: 0.4rem;
+                border-radius: 16px;
+                box-shadow: 0 1px 3px var(--kb-shadow);
+                margin-bottom: 1rem;
             }
             table.kb-sheet {
                 width: 100%;
                 border-collapse: collapse;
-                font-size: 0.85rem;
+                font-size: 0.875rem;
             }
             table.kb-sheet thead th {
                 position: sticky;
                 top: 0;
                 z-index: 2;
-                background: linear-gradient(135deg, var(--kb-head-from) 0%, var(--kb-head-to) 100%);
+                background: linear-gradient(180deg, var(--kb-head-from) 0%, var(--kb-head-to) 100%);
                 color: var(--kb-text-soft);
                 text-align: left;
                 font-size: 0.7rem;
                 text-transform: uppercase;
-                letter-spacing: 0.04em;
-                font-weight: 800;
-                padding: 0.7rem 0.8rem;
-                border-bottom: 2px solid var(--kb-border);
+                letter-spacing: 0.08em;
+                font-weight: 700;
+                padding: 0.75rem 1rem;
+                border-bottom: 1px solid var(--kb-border);
                 white-space: nowrap;
             }
             table.kb-sheet tbody td {
-                padding: 0.6rem 0.8rem;
+                padding: 0.7rem 1rem;
                 border-bottom: 1px solid var(--kb-border-soft);
                 color: var(--kb-text);
                 vertical-align: middle;
             }
             table.kb-sheet tbody tr:nth-child(even) { background: var(--kb-row-alt); }
             table.kb-sheet tbody tr:hover { background: var(--kb-row-hover); }
-            table.kb-sheet td.kb-num { text-align: right; font-weight: 700; white-space: nowrap; }
+            table.kb-sheet td.kb-num { text-align: right; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
             table.kb-sheet td.kb-qe {
                 color: var(--kb-qe);
                 background: var(--kb-qe-bg);
                 border-left: 1px solid var(--kb-border-soft);
                 border-right: 1px solid var(--kb-border-soft);
+                font-weight: 700;
             }
             table.kb-sheet thead th:nth-child(6) { color: var(--kb-qe); }
             table.kb-sheet tfoot td.kb-qe { background: var(--kb-qe-bg); color: var(--kb-qe); }
-            table.kb-sheet td.kb-date { white-space: nowrap; }
+            table.kb-sheet td.kb-date { white-space: nowrap; font-variant-numeric: tabular-nums; }
             table.kb-sheet td.kb-desc-cell { min-width: 280px; }
             table.kb-sheet td.kb-conf-cell { color: var(--kb-text-soft); white-space: nowrap; }
-            table.kb-sheet tr.row-atrasado td:first-child { box-shadow: inset 5px 0 0 var(--kb-atrasado); }
-            table.kb-sheet tr.row-alta td:first-child { box-shadow: inset 4px 0 0 var(--kb-alta); }
-            table.kb-sheet tr.row-media td:first-child { box-shadow: inset 4px 0 0 var(--kb-media); }
-            table.kb-sheet tr.row-baixa td:first-child { box-shadow: inset 4px 0 0 var(--kb-baixa); }
+            table.kb-sheet tr.row-atrasado td:first-child { box-shadow: inset 3px 0 0 var(--kb-atrasado); }
+            table.kb-sheet tr.row-alta td:first-child { box-shadow: inset 3px 0 0 var(--kb-alta); }
+            table.kb-sheet tr.row-media td:first-child { box-shadow: inset 3px 0 0 var(--kb-media); }
+            table.kb-sheet tr.row-baixa td:first-child { box-shadow: inset 3px 0 0 var(--kb-baixa); }
             table.kb-sheet tfoot td {
-                padding: 0.65rem 0.8rem;
-                border-top: 2px solid var(--kb-border);
+                padding: 0.75rem 1rem;
+                border-top: 1px solid var(--kb-border);
                 background: var(--kb-surface-2);
                 color: var(--kb-text);
-                font-weight: 800;
+                font-weight: 700;
             }
             .kb-sheet-wrap .kb-cod {
                 display: inline-block;
                 background: var(--kb-chip-bg);
                 border: 1px solid var(--kb-chip-border);
-                color: var(--kb-text-soft);
+                color: var(--kb-text);
                 border-radius: 6px;
-                padding: 0.1rem 0.45rem;
-                font-size: 0.78rem;
-                font-weight: 700;
+                padding: 0.15rem 0.5rem;
+                font-size: 0.75rem;
+                font-weight: 600;
+                font-variant-numeric: tabular-nums;
             }
 
             .kb-info-box {
-                background: linear-gradient(135deg, var(--kb-info-from) 0%, var(--kb-info-to) 100%);
+                background: linear-gradient(90deg, var(--kb-info-from) 0%, var(--kb-info-to) 100%);
                 color: var(--kb-info-text);
-                padding: 0.9rem 1rem;
-                border-radius: 10px;
-                border-left: 4px solid #2196f3;
-                margin: 0.8rem 0;
-                font-size: 0.92rem;
+                padding: 0.9rem 1.25rem;
+                border-radius: 12px;
+                border: 1px solid rgba(99, 102, 241, 0.2);
+                margin: 1rem 0;
+                font-size: 0.875rem;
             }
         </style>
         """.replace("/*__PALETA__*/", paleta),
@@ -283,7 +309,8 @@ def pagina_kanban():
     st.markdown(
         """
         <div class="kb-header">
-            <h1>📌 Kanban de Confecção </h1>
+            <h1>📋 Kanban de Confecção</h1>
+            <p>Gestão visual de pedidos por confecção com controle de prioridade e quantidade emergencial</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -292,10 +319,10 @@ def pagina_kanban():
     st.markdown(
         """
         <div class="kb-legend">
-            <span class="kb-legend-item"><span class="kb-dot atrasado"></span> ⚠️ Atrasado — data de entrega vencida</span>
-            <span class="kb-legend-item"><span class="kb-dot alta"></span> 🔴 Alta — entrega em até 15 dias</span>
-            <span class="kb-legend-item"><span class="kb-dot media"></span> 🟠 Média — entrega em 16 a 30 dias</span>
-            <span class="kb-legend-item"><span class="kb-dot baixa"></span> 🟢 Baixa — entrega em mais de 1 mês</span>
+            <span class="kb-legend-item"><span class="kb-dot atrasado"></span> Atrasado — data de entrega vencida</span>
+            <span class="kb-legend-item"><span class="kb-dot alta"></span> Alta — entrega em até 15 dias</span>
+            <span class="kb-legend-item"><span class="kb-dot media"></span> Média — entrega em 16 a 30 dias</span>
+            <span class="kb-legend-item"><span class="kb-dot baixa"></span> Baixa — entrega em mais de 1 mês</span>
         </div>
         """,
         unsafe_allow_html=True,
