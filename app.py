@@ -6,6 +6,7 @@ Páginas do sistema:
     Kanban de Confecção   -> kanban_confeccao.py
     Dashboards de Pedidos -> paginas/dashboards.py
     Análise de Estoque    -> paginas/analise_estoque.py
+    Projeção Futuro       -> paginas/projecao_futuro.py
 
 Os arquivos enviados na barra lateral (Pedidos e Estoque) ficam disponíveis
 em todas as páginas — envie uma única vez.
@@ -39,6 +40,11 @@ pagina = st.navigation(
             "paginas/analise_estoque.py",
             title="Análise de Estoque",
             icon="📦",
+        ),
+        st.Page(
+            "paginas/projecao_futuro.py",
+            title="Projeção Futuro",
+            icon="📅",
         ),
     ],
     position="sidebar",

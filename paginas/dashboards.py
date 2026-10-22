@@ -112,13 +112,16 @@ with st.sidebar:
 
     st.markdown("---")
     st.header("🚫 Exclusões")
-    codigos_todos = sorted(df_pedidos["Cód Confec"].astype(str).unique().tolist())
-    codigos_ignorar = st.multiselect(
-        "Ignorar Cód Confec",
-        options=codigos_todos,
-        default=[],
-        help="Remove os códigos selecionados da visualização em todos os gráficos e tabelas.",
-    )
+    if "Cód Confec" in df_pedidos.columns:
+        codigos_todos = sorted(df_pedidos["Cód Confec"].astype(str).unique().tolist())
+        codigos_ignorar = st.multiselect(
+            "Ignorar Cód Confec",
+            options=codigos_todos,
+            default=[],
+            help="Remove os códigos selecionados da visualização em todos os gráficos e tabelas.",
+        )
+    else:
+        codigos_ignorar = []
 
 # ==================== FILTRAGEM ====================
 
@@ -831,6 +834,126 @@ with st.container(border=True):
             use_container_width=True,
         )
 
+# ==================== 6. TECIDO SUGERIDO ====================
+
+st.markdown("### 🧵 Tecido Sugerido")
+
+tec_col = 'Tec Faz "x" Confec'
+df_tecido = None
+
+if df_estoque is not None:
+    df_estoque_tecido = preparar_estoque(df_estoque).copy()
+    df_estoque_tecido["Cód Confec_norm"] = df_estoque_tecido["Cód Confec"].map(lambda v: __import__('nucleo').normalizar_cod(v))
+    df_estoque_tecido[tec_col] = pd.to_numeric(df_estoque_tecido.get(tec_col), errors="coerce")
+    df_estoque_tecido["Saldo 5"] = pd.to_numeric(df_estoque_tecido.get("Saldo 5"), errors="coerce")
+    if "Cons. Unitário" in df_estoque_tecido.columns:
+        df_estoque_tecido["Cons. Unitário"] = pd.to_numeric(df_estoque_tecido.get("Cons. Unitário"), errors="coerce")
+    elif "Cons Unitario" in df_estoque_tecido.columns:
+        df_estoque_tecido["Cons. Unitário"] = pd.to_numeric(df_estoque_tecido.get("Cons Unitario"), errors="coerce")
+    else:
+        df_estoque_tecido["Cons. Unitário"] = np.nan
+    df_estoque_tecido["Descrição"] = df_estoque_tecido.get("Descrição", "")
+
+    codigos_estoque = set(df_estoque_tecido["Cód Confec_norm"].dropna())
+    codigos_pedidos_filtrados = set(df["Cód Confec_norm"].dropna())
+    codigos_considerar = codigos_estoque.intersection(codigos_pedidos_filtrados)
+
+    df_tecido_base = df_estoque_tecido[df_estoque_tecido["Cód Confec_norm"].isin(codigos_considerar)].copy()
+    df_tecido_base = df_tecido_base[df_tecido_base["Saldo 5"] < 0].copy()
+
+    if codigos_ignorar:
+        codigos_ignorar_norm_t = set(str(c).strip() for c in codigos_ignorar)
+        df_tecido_base = df_tecido_base[~df_tecido_base["Cód Confec"].astype(str).isin(codigos_ignorar_norm_t)]
+        df_tecido_base = df_tecido_base[~df_tecido_base["Cód Confec_norm"].isin(codigos_ignorar_norm_t)]
+
+    def calc_tecido(row):
+        s5 = row.get("Saldo 5")
+        if pd.isna(s5) or s5 >= 0:
+            return 0.0
+        tfx = row.get(tec_col)
+        cons = row.get("Cons. Unitário")
+        if pd.isna(tfx):
+            tfx = 0
+        calc = float(s5) + float(tfx)
+        if calc >= 0:
+            return 0.0
+        tecido = (abs(calc) * 1.10) * (float(cons) if pd.notna(cons) else 0.0)
+        if tecido < 0:
+            tecido = 0.0
+        return round(tecido, 3)
+
+    if not df_tecido_base.empty:
+        df_tecido_base["Calc (Saldo5 + Tec Faz x Confec)"] = df_tecido_base.apply(lambda r: float(r["Saldo 5"]) + float(r[tec_col]) if pd.notna(r.get(tec_col)) else float(r["Saldo 5"]), axis=1)
+        df_tecido_base["Tecido Sugerido (m)"] = df_tecido_base.apply(calc_tecido, axis=1)
+        df_tecido = df_tecido_base[df_tecido_base["Tecido Sugerido (m)"] > 0].copy()
+    else:
+        df_tecido = pd.DataFrame()
+else:
+    df_tecido = pd.DataFrame()
+
+if df_tecido is None or df_tecido.empty:
+    st.info("Não há itens com Saldo 5 negativo nos códigos filtrados para cálculo de tecido sugerido.")
+else:
+    tk1, tk2, tk3 = st.columns(3)
+    with tk1:
+        with st.container(border=True):
+            st.metric("Itens com sugestão", f"{len(df_tecido)}", help="Itens com Saldo 5 < 0")
+    with tk2:
+        with st.container(border=True):
+            st.metric("Total Tecido Sugerido (m)", f"{df_tecido['Tecido Sugerido (m)'].sum():,.3f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    with tk3:
+        with st.container(border=True):
+            st.metric("Códigos únicos", f"{df_tecido['Cód Confec_norm'].nunique()}")
+
+    chart_cols_t = st.columns([1.6, 1])
+    with chart_cols_t[0]:
+        with st.container(border=True):
+            df_tecido_g = df_tecido.copy()
+            df_tecido_g["Label"] = df_tecido_g["Cód Confec"].astype(str) + " - " + df_tecido_g["Descrição"].astype(str).str.slice(0, 30)
+            df_tecido_g = df_tecido_g.sort_values("Tecido Sugerido (m)", ascending=True).tail(top_n)
+            fig = go.Figure()
+            fig.add_bar(
+                y=df_tecido_g["Label"],
+                x=df_tecido_g["Tecido Sugerido (m)"],
+                orientation="h",
+                marker=dict(color=df_tecido_g["Tecido Sugerido (m)"], colorscale=[[0, "rgba(99, 102, 241, 0.4)"], [1, "#6366f1"]], showscale=False),
+                text=df_tecido_g["Tecido Sugerido (m)"].apply(lambda v: f"{v:,.3f} m".replace(",", "X").replace(".", ",").replace("X", ".")),
+                textposition="outside",
+                hovertemplate="<b>%{y}</b><br>Tecido: %{x:.3f} m<extra></extra>",
+            )
+            fig.update_layout(
+                template=template_plotly(),
+                height=max(420, 32 * len(df_tecido_g) + 80),
+                title=f"Top {len(df_tecido_g)} Itens - Tecido Sugerido",
+                xaxis_title="Metros",
+                yaxis_title="",
+                margin=dict(t=70, l=10, r=90, b=10),
+                showlegend=False,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    with chart_cols_t[1]:
+        with st.container(border=True):
+            st.markdown("**Critério aplicado**")
+            st.caption(f"Se Saldo 5 < 0: ( (|Saldo 5 + {tec_col}|) * 1,10 ) * Cons. Unitário, quando (Saldo 5 + {tec_col}) < 0")
+
+    with st.expander("📋 Ver tabela detalhada - Tecido Sugerido", expanded=False):
+        cols_t = ["Cód Confec", "Descrição", "Saldo 5", tec_col, "Cons. Unitário", "Calc (Saldo5 + Tec Faz x Confec)", "Tecido Sugerido (m)"]
+        cols_t = [c for c in cols_t if c in df_tecido.columns]
+        st.dataframe(
+            df_tecido[cols_t].sort_values("Tecido Sugerido (m)", ascending=False).style.format(
+                {
+                    "Saldo 5": "{:,.0f}",
+                    tec_col: "{:,.0f}",
+                    "Cons. Unitário": "{:,.4f}",
+                    "Calc (Saldo5 + Tec Faz x Confec)": "{:,.0f}",
+                    "Tecido Sugerido (m)": "{:,.3f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
 # ==================== EXPORTAÇÃO ====================
 
 st.markdown("### 📥 Exportar Dados")
@@ -856,6 +979,10 @@ with st.container(border=True):
         df_faixa.to_excel(writer, index=False, sheet_name="Eficacia")
         df[["Marca", "Confecção", "Status", "Compra", "Cód Confec", "Confeccionado", "Qtd", "Saldo",
             "Dt Entrega", "Prioridade", "Eficacia"]].to_excel(writer, index=False, sheet_name="Pedidos")
+        if df_tecido is not None and not df_tecido.empty:
+            cols_t_exp = ["Cód Confec", "Descrição", "Saldo 5", tec_col, "Cons. Unitário", "Calc (Saldo5 + Tec Faz x Confec)", "Tecido Sugerido (m)"]
+            cols_t_exp = [c for c in cols_t_exp if c in df_tecido.columns]
+            df_tecido[cols_t_exp].to_excel(writer, index=False, sheet_name="Tecido Sugerido")
 
     exp_cols = st.columns(2)
     with exp_cols[0]:

@@ -364,6 +364,8 @@ def preparar_estoque(df):
         "Saldo Compra",
         "Qtd. Cortado",
         'Tec Faz "x" Confec',
+        "Cons. Unitário",
+        "Cons Unitario",
     ]:
         if coluna in df.columns:
             df[coluna] = pd.to_numeric(df[coluna], errors="coerce")
@@ -375,6 +377,8 @@ def preparar_estoque(df):
         df["Descrição"] = df["Descrição"].map(lambda v: _texto(v, ""))
     else:
         df["Descrição"] = ""
+    if "Cons Unitario" in df.columns and "Cons. Unitário" not in df.columns:
+        df["Cons. Unitário"] = df["Cons Unitario"]
     for coluna, padrao in [("Situação", "Sem Situação"), ("Coleção", "Sem Coleção"),
                            ("Segmento", "Sem Segmento"), ("Tipo Produto", "Sem Tipo")]:
         if coluna in df.columns:
