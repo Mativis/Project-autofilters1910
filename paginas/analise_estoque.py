@@ -12,6 +12,7 @@ e déficit de cada item.
 """
 
 import io
+import math
 from datetime import date
 
 import numpy as np
@@ -126,6 +127,38 @@ df["Demanda"] = pd.to_numeric(df["Demanda"], errors="coerce").fillna(0)
 df["Déficit"] = df["Saldo 3"] - df["Demanda"]
 df["Cobertura"] = np.where(
     df["Demanda"] > 0, df["Saldo 3"] / df["Demanda"], np.nan
+)
+
+# ==================== ANÁLISE DE COMPRA SUGERIDA ====================
+
+tec_col = 'Tec Faz "x" Confec'
+df[tec_col] = pd.to_numeric(df.get(tec_col), errors="coerce") if tec_col in df.columns else np.nan
+df["Saldo 5"] = pd.to_numeric(df.get("Saldo 5"), errors="coerce")
+
+def calcular_compra_sugerida(row):
+    s5 = row.get("Saldo 5")
+    if pd.isna(s5):
+        return 0
+    if s5 >= 0:
+        return 0
+    # Saldo 5 negativo: sugestão = |Saldo 5| * 1,1
+    sug_bruta = abs(float(s5)) * 1.1
+    # arredondar para cima como na Q.E?
+    sug_bruta = math.ceil(sug_bruta)
+    teto = row.get(tec_col)
+    if pd.notna(teto) and float(teto) >= 0:
+        teto_val = float(teto)
+        if teto_val < sug_bruta:
+            sug_bruta = teto_val
+    if sug_bruta < 0:
+        sug_bruta = 0
+    return int(max(0, sug_bruta))
+
+df["Compra Sugerida"] = df.apply(calcular_compra_sugerida, axis=1)
+df["Compra Sugerida Bruta"] = np.where(
+    df["Saldo 5"] < 0,
+    np.ceil(np.abs(df["Saldo 5"]) * 1.1),
+    0,
 )
 
 
@@ -341,6 +374,102 @@ else:
     fig.update_layout(height=max(420, 26 * min(top_n, len(df_def))), coloraxis_showscale=False, margin=dict(t=55, l=10, r=10, b=10))
     st.plotly_chart(fig, width="stretch")
 
+# ==================== 4. ANÁLISE DE COMPRA SUGERIDA ====================
+
+st.markdown("---")
+st.markdown('<div class="db-secao">🛒 Análise de compra sugerida (Saldo 5)</div>', unsafe_allow_html=True)
+
+st.caption(
+    "Quando o Saldo 5 estiver negativo, a sugestão é |Saldo 5| × 1,1, arredondada para cima (ceil), "
+    f'limitada pelo valor de "Tec Faz \"x\" Confec" (nunca maior que esse teto).'
+)
+
+tec_col = 'Tec Faz "x" Confec'
+df_compra = df.copy()
+df_compra["Compra Sugerida"] = df_compra.apply(calcular_compra_sugerida, axis=1)
+df_compra["Compra Sugerida Bruta"] = np.where(
+    df_compra["Saldo 5"] < 0,
+    np.ceil(np.abs(df_compra["Saldo 5"]) * 1.1),
+    0,
+)
+
+qtd_itens_sug = int((df_compra["Compra Sugerida"] > 0).sum())
+total_sug = float(df_compra["Compra Sugerida"].sum())
+
+c1k, c2k, c3k = st.columns(3)
+with c1k:
+    st.markdown(card("Itens com sugestão", f"{fmt_num(qtd_itens_sug)}", "Saldo 5 < 0"), unsafe_allow_html=True)
+with c2k:
+    st.markdown(card("Total sugerido", fmt_num(total_sug), "compra sugerida aplicada ao teto"), unsafe_allow_html=True)
+with c3k:
+    st.markdown(card('Teto "Tec Faz x Confec"', "aplicado quando menor que |S5|×1,1", "regra conforme solicitação"), unsafe_allow_html=True)
+
+if qtd_itens_sug == 0:
+    st.info("Não há itens com Saldo 5 negativo no filtro atual.")
+else:
+    df_sug = df_compra[df_compra["Compra Sugerida"] > 0].copy()
+    df_sug = df_sug.sort_values("Compra Sugerida", ascending=False)
+    df_sug["Item"] = (
+        df_sug["Descrição"].astype(str).str.slice(0, 40)
+        + " ("
+        + df_sug["Cód Confec"].astype(str)
+        + ")"
+    )
+
+    fig = px.bar(
+        df_sug.head(top_n).sort_values("Compra Sugerida"),
+        x="Compra Sugerida",
+        y="Item",
+        orientation="h",
+        color="Compra Sugerida",
+        color_continuous_scale=["#fff3e0", "#ef6c00"],
+        labels={"Compra Sugerida": "Compra sugerida", "Item": ""},
+        title=f"Top {min(top_n, len(df_sug))} itens com maior compra sugerida",
+        template=template_plotly(),
+    )
+    fig.update_layout(height=max(420, 26 * min(top_n, len(df_sug))), coloraxis_showscale=False, margin=dict(t=55, l=10, r=10, b=10))
+    st.plotly_chart(fig, width="stretch")
+
+    colunas_sug = [
+        "Marca",
+        "Cód Confec",
+        "Descrição",
+        "Saldo 5",
+        tec_col if tec_col in df_sug.columns else None,
+        "Compra Sugerida Bruta",
+        "Compra Sugerida",
+        "Saldo 1",
+        "Saldo 2",
+        "Saldo 3",
+        "Demanda",
+        "Situação do item",
+    ]
+    colunas_sug = [c for c in colunas_sug if c is not None and c in df_sug.columns]
+    tabela_sug = df_sug[colunas_sug].copy()
+
+    coluna_config_sug = {
+        "Marca": st.column_config.TextColumn("Marca", width="small"),
+        "Cód Confec": st.column_config.TextColumn("Cód Confec", width="small"),
+        "Descrição": st.column_config.TextColumn("Descrição", width="large"),
+        "Saldo 5": st.column_config.NumberColumn("Saldo 5 (projetado)", format="%d"),
+        "Compra Sugerida Bruta": st.column_config.NumberColumn("|Saldo 5| × 1,1 (ceil)", format="%d"),
+        "Compra Sugerida": st.column_config.NumberColumn("Compra Sugerida", format="%d"),
+        "Saldo 1": st.column_config.NumberColumn("Saldo 1", format="%d"),
+        "Saldo 2": st.column_config.NumberColumn("Saldo 2", format="%d"),
+        "Saldo 3": st.column_config.NumberColumn("Saldo 3", format="%d"),
+        "Demanda": st.column_config.NumberColumn("Demanda", format="%d"),
+        "Situação do item": st.column_config.TextColumn("Situação", width="medium"),
+    }
+    if tec_col in tabela_sug.columns:
+        coluna_config_sug[tec_col] = st.column_config.NumberColumn('Tec Faz "x" Confec" (teto)', format="%d")
+
+    st.dataframe(
+        tabela_sug,
+        width="stretch",
+        hide_index=True,
+        column_config=coluna_config_sug,
+    )
+
 # ==================== TABELA POR ITEM ====================
 
 st.markdown("---")
@@ -355,6 +484,7 @@ colunas_tabela = [
     "Saldo 2",
     "Em Confecção",
     "Saldo 3",
+    "Saldo 5",
     "Carteira sem Fat",
     "Demanda",
     "Déficit",
@@ -379,6 +509,7 @@ st.dataframe(
         "Saldo 2": st.column_config.NumberColumn("Saldo 2", format="%d"),
         "Em Confecção": st.column_config.NumberColumn("Em Confecção", format="%d"),
         "Saldo 3": st.column_config.NumberColumn("Saldo 3", format="%d"),
+        "Saldo 5": st.column_config.NumberColumn("Saldo 5 (projetado)", format="%d"),
         "Carteira sem Fat": st.column_config.NumberColumn("Carteira sem Fat", format="%d"),
         "Demanda": st.column_config.NumberColumn("Demanda", format="%d"),
         "Déficit": st.column_config.NumberColumn("Déficit", format="%d"),
@@ -392,27 +523,41 @@ st.dataframe(
 
 st.markdown("### 📥 Exportar a análise")
 
+# Garante as colunas de sugestão no export
+df_export = df.copy()
+df_export["Compra Sugerida"] = df_export.apply(calcular_compra_sugerida, axis=1)
+df_export["Compra Sugerida Bruta"] = np.where(
+    df_export["Saldo 5"] < 0,
+    np.ceil(np.abs(df_export["Saldo 5"]) * 1.1),
+    0,
+)
+
 buffer = io.BytesIO()
 with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-    df.to_excel(writer, index=False, sheet_name="Por Item")
+    df_export.to_excel(writer, index=False, sheet_name="Por Item")
     (
-        df.groupby(["Marca", "Situação do item"])
+        df_export.groupby(["Marca", "Situação do item"])
         .agg(
             Itens=("Cód Confec", "count"),
             Saldo1=("Saldo 1", "sum"),
             Saldo2=("Saldo 2", "sum"),
             Saldo3=("Saldo 3", "sum"),
+            Saldo5=("Saldo 5", "sum"),
+            CompraSugerida=("Compra Sugerida", "sum"),
             Demanda=("Demanda", "sum"),
         )
         .reset_index()
         .to_excel(writer, index=False, sheet_name="Resumo")
+    )
+    df_export[df_export["Compra Sugerida"] > 0].to_excel(
+        writer, index=False, sheet_name="Compra Sugerida"
     )
 
 c1, c2 = st.columns(2)
 with c1:
     st.download_button(
         "📥 Baixar CSV — análise por item",
-        data=df.to_csv(index=False, encoding="utf-8-sig"),
+        data=df_export.to_csv(index=False, encoding="utf-8-sig"),
         file_name=f"analise_estoque_{date.today().strftime('%Y-%m-%d')}.csv",
         mime="text/csv",
         width="stretch",

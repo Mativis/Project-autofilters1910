@@ -363,6 +363,7 @@ def preparar_estoque(df):
         "Estoque",
         "Saldo Compra",
         "Qtd. Cortado",
+        'Tec Faz "x" Confec',
     ]:
         if coluna in df.columns:
             df[coluna] = pd.to_numeric(df[coluna], errors="coerce")
