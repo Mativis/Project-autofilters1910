@@ -697,71 +697,58 @@ if lotes_ordenados:
 else:
     st.info("Não há datas suficientes para montar os lotes de chegada de material.")
 
-# ==================== DETALHAMENTO ====================
+# ==================== DETALHAMENTO POR ENTREGA ====================
 
-st.markdown("### 📋 Detalhamento do Planejamento")
-
-colunas_detalhe = [
-    "Lote",
-    "Chegada Material",
-    "Pedido",
-    "Cód Confec",
-    "Produto",
-    "Cliente",
-    "Marca",
-    "Operação",
-    "Qtd",
-    "Saldo Calc.",
-    "Em Trânsito",
-    "Saldo",
-    "Coberto pela Produção",
-    "Necessidade",
-    "Entrega Atrasada",
-    "CAMEBA",
-    "Data Necessidade",
-    "Origem da Data",
-    "Em Confecção",
-    "Confecções",
-]
-colunas_detalhe = [c for c in colunas_detalhe if c in df.columns]
+st.markdown("### 📋 Detalhamento por Entrega e Item")
 
 lotes_disponiveis = df["Lote"].unique().tolist()
 selecao_lotes = st.multiselect(
-    "Filtrar por lote",
+    "Filtrar por entrega",
     lotes_disponiveis,
     default=lotes_disponiveis,
     key="filtro_lotes",
 )
 detalhe = df[df["Lote"].isin(selecao_lotes)] if selecao_lotes else df
 
-with st.container(border=True):
-    st.dataframe(
-        detalhe[colunas_detalhe]
-        .rename(
-            columns={
-                "Chegada Material": "Chegada material",
-                "Cód Confec": "Cód Confec",
-                "Data Necessidade": "Data necessidade",
-                "Origem da Data": "Origem",
-                "Em Confecção": "Em confecção",
-            }
-        )
-        .assign(
-            **{
-                "Chegada material": lambda d: d["Chegada material"].map(fmt_data),
-                "Data necessidade": lambda d: d["Data necessidade"].map(fmt_data),
-                "Qtd": lambda d: d["Qtd"].map(fmt_num),
-                "Saldo Calc.": lambda d: d["Saldo Calc."].map(fmt_num),
-                "Em Trânsito": lambda d: d["Em Trânsito"].map(fmt_num),
-                "Saldo": lambda d: d["Saldo"].map(fmt_num),
-                "Coberto pela Produção": lambda d: d["Coberto pela Produção"].map(fmt_num),
-                "Necessidade": lambda d: d["Necessidade"].map(fmt_num),
-            }
-        ),
-        width="stretch",
-        hide_index=True,
-        height=420,
+if detalhe.empty:
+    st.info("Nenhum item selecionado.")
+else:
+    # Ordena entregas por data de chegada
+    entregas_ordenadas = (
+        detalhe.groupby("Lote", sort=False)["Chegada Material"]
+        .first()
+        .sort_values()
+        .index.tolist()
     )
+    for lote in entregas_ordenadas:
+        bloco = detalhe[detalhe["Lote"] == lote].copy()
+        chegada = bloco["Chegada Material"].iloc[0]
+        n_itens = bloco["Cód Confec"].nunique()
+        total_un = float(bloco["Necessidade"].sum())
+        atrasada = bool(bloco["Entrega Atrasada"].iloc[0]) if "Entrega Atrasada" in bloco.columns else False
+        titulo = (
+            f"{lote}  ·  {n_itens} item(ns)  ·  "
+            f"{fmt_num(total_un)} unidades" + ("  ⚠️ atrasada" if atrasada else "")
+        )
+        with st.expander(titulo, expanded=False):
+            # Agrupa por item (Cód Confec)
+            for cod, grupo in bloco.groupby("Cód Confec", sort=False):
+                produto = str(grupo["Produto"].iloc[0])
+                total_item = float(grupo["Necessidade"].sum())
+                cameba = bool(grupo["CAMEBA"].iloc[0]) if "CAMEBA" in grupo.columns else False
+                st.markdown(
+                    f"**Item `{cod}` — {produto} — {fmt_num(total_item)} unidades**"
+                    + ("  (CAMEBA)" if cameba else "")
+                )
+                # Lista os pedidos que compõem a demanda
+                linhas_pedido = []
+                for _, row in grupo.sort_values("Data Necessidade").iterrows():
+                    linhas_pedido.append(
+                        f"- Pedido **{row['Pedido']}** — {fmt_num(row['Necessidade'])} un — "
+                        f"necessidade {fmt_data(row['Data Necessidade'])} ({row['Origem da Data']})"
+                    )
+                st.markdown("\n".join(linhas_pedido))
+                st.markdown("")
 
 with st.expander("ℹ️ Como o planejamento é calculado", expanded=False):
     st.markdown(
