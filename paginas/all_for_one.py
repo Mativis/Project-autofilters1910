@@ -428,8 +428,11 @@ if df_plan_base is not None and not df_plan_base.empty:
         df_plan_base = df_plan_base[df_plan_base["Data Necessidade"] >= pd.Timestamp(data_nec_de_all)]
     if data_nec_ate_all is not None:
         df_plan_base = df_plan_base[df_plan_base["Data Necessidade"] <= pd.Timestamp(data_nec_ate_all)]
-    # Filtra itens com necessidade abaixo do mínimo por item
-    df_plan_base = df_plan_base[df_plan_base["Necessidade"] >= float(qtd_min_item)]
+    # Filtra itens com necessidade abaixo do mínimo por item (soma por Cód Confec)
+    if "Cód Confec" in df_plan_base.columns:
+        totais = df_plan_base.groupby("Cód Confec")["Necessidade"].sum()
+        itens_validos = totais[totais >= float(qtd_min_item)].index
+        df_plan_base = df_plan_base[df_plan_base["Cód Confec"].isin(itens_validos)]
     if descontar_producao and "Necessidade" not in df_plan_base.columns:
         df_plan_base["Necessidade"] = df_plan_base["Saldo"]
     if "Necessidade" not in df_plan_base.columns:

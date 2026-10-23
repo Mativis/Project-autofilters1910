@@ -387,8 +387,10 @@ if df.empty:
     )
     st.stop()
 
-# Filtra itens com necessidade abaixo do mínimo por item
-df = df[df["Necessidade"] >= float(qtd_min_item_pf)]
+# Filtra itens com necessidade abaixo do mínimo por item (soma por Cód Confec)
+totais_por_item = df.groupby("Cód Confec")["Necessidade"].sum()
+itens_validos = totais_por_item[totais_por_item >= float(qtd_min_item_pf)].index
+df = df[df["Cód Confec"].isin(itens_validos)]
 if df.empty:
     st.info("Nenhum item atinge a quantidade mínima por item configurada.")
     st.stop()
