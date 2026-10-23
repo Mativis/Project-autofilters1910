@@ -246,6 +246,11 @@ with st.sidebar:
         value=True,
         help="Saldo = ((Qtd* - Saldo Calc.) - Em Trânsito). Exclui itens já cobertos.",
     )
+    somente_com_data = st.checkbox(
+        "Desconsiderar pedidos sem data de agendamento ou entrega",
+        value=True,
+        help="Remove itens que não possuem Dt. Agendamento nem Dt Entrega.",
+    )
     descontar_producao = st.checkbox(
         "Descontar produção já em confecção",
         value=True,
@@ -297,6 +302,8 @@ with st.sidebar:
 df = proj.copy()
 if somente_abertos:
     df = df[df["Saldo"] > 0]
+if somente_com_data:
+    df = df[df["Dt Agendamento"].notna() | df["Dt Entrega"].notna()]
 for coluna, selecionados in filtros.items():
     if selecionados:
         df = df[df[coluna].isin(selecionados)]
@@ -374,12 +381,22 @@ for semana in sorted(df["Semana Demanda"].dropna().unique()):
                 "cameba": float(linha["_vol"]) if bool(linha["_is_cameba"]) else 0.0,
             })
 
-# Agendamento com intervalo mínimo entre entregas
+# Agendamento com intervalo mínimo entre entregas, sem ultrapassar a data de necessidade
 prev = None
+entregas_atrasadas = 0
 for entrega in entregas:
     candidato = pd.Timestamp(entrega["week"])
     if prev is not None and candidato < prev + intervalo:
         candidato = prev + intervalo
+    # Prazo: data de necessidade mais cedo entre os itens da entrega
+    prazo = pd.Timestamp(df.loc[entrega["items"], "Data Necessidade"].min())
+    entrega["prazo"] = prazo
+    if candidato > prazo:
+        candidato = prazo
+        entrega["atrasada"] = True
+        entregas_atrasadas += 1
+    else:
+        entrega["atrasada"] = False
     entrega["agendada"] = candidato
     prev = candidato
 
@@ -390,6 +407,7 @@ for idx_entrega, entrega in enumerate(entregas):
 
 df["EntregaID"] = df.index.map(mapa_item_entrega)
 df["Chegada Material"] = df["EntregaID"].map(lambda i: entregas[i]["agendada"])
+df["Entrega Atrasada"] = df["EntregaID"].map(lambda i: entregas[i]["atrasada"])
 
 df = df.sort_values(["Chegada Material", "Data Base", "Pedido"], kind="stable").reset_index(drop=True)
 
@@ -457,6 +475,11 @@ if pd.notna(primeira) and pd.notna(ultima):
         f"🗓️ Horizonte planejado: **{primeira.strftime('%d/%m/%Y')}** → "
         f"**{ultima.strftime('%d/%m/%Y')}** · {em_conf_itens} itens já possuem confecção definida."
     )
+    if entregas_atrasadas:
+        st.warning(
+            f"⚠️ {entregas_atrasadas} entrega(s) não couberam no intervalo e foram "
+            "antecipadas para não ultrapassar a data de necessidade."
+        )
 
 # ==================== GRÁFICOS ====================
 
@@ -624,6 +647,7 @@ colunas_detalhe = [
     "Saldo",
     "Coberto pela Produção",
     "Necessidade",
+    "Entrega Atrasada",
     "CAMEBA",
     "Data Necessidade",
     "Origem da Data",
@@ -681,7 +705,9 @@ with st.expander("ℹ️ Como o planejamento é calculado", expanded=False):
 5. Os itens são agrupados na semana da data de necessidade.
 6. Cada **entrega** respeita **{int(capacidade_entrega):,} unidades** no total e no máximo
    **{int(capacidade_cameba):,} unidades** ({int(pct_cameba)}%) para o segmento **CAMEBA**.
-7. As entregas são espaçadas pelo intervalo mínimo configurado.
+7. As entregas são agendadas para **não ultrapassar a data de necessidade**
+   (antecipadas quando necessário).
+8. As entregas são espaçadas pelo intervalo mínimo configurado.
 """
     )
 
