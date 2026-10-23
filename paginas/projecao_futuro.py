@@ -32,6 +32,7 @@ from nucleo import (
     load_excel,
     normalizar_cod,
     para_texto,
+    preparar_estoque,
     sidebar_arquivos,
     template_plotly,
 )
@@ -449,7 +450,7 @@ n_lotes = len(lotes_ordenados)
 primeira = pd.Timestamp(lotes_ordenados[0]) if lotes_ordenados else pd.NaT
 ultima = pd.Timestamp(lotes_ordenados[-1]) if lotes_ordenados else pd.NaT
 
-colunas_kpi = st.columns(6)
+colunas_kpi = st.columns(4)
 with colunas_kpi[0]:
     with st.container(border=True):
         st.metric("🧾 Itens", fmt_num(len(df)), help="Linhas da projeção após os filtros")
@@ -462,30 +463,38 @@ with colunas_kpi[2]:
 with colunas_kpi[3]:
     with st.container(border=True):
         st.metric(
-            "🏭 Já em Produção",
-            fmt_num(coberto_total),
-            help="Quantidade coberta por pedidos que já possuem confecção na planilha de Pedidos",
-        )
-with colunas_kpi[4]:
-    with st.container(border=True):
-        st.metric(
             "🎯 Necessidade Líquida",
             fmt_num(necessidade_total),
             help="Saldo em aberto menos a produção já em andamento",
         )
-with colunas_kpi[5]:
+colunas_kpi2 = st.columns(3)
+with colunas_kpi2[0]:
     with st.container(border=True):
         st.metric(
-            "📅 Lotes",
+            "🏭 Já em Produção",
+            fmt_num(coberto_total),
+            help="Quantidade coberta por pedidos que já possuem confecção na planilha de Pedidos",
+        )
+with colunas_kpi2[1]:
+    with st.container(border=True):
+        st.metric(
+            "📅 Entregas",
             fmt_num(n_lotes),
             help=f"Intervalo mínimo de {intervalo_semanas} semana(s) entre chegadas",
         )
-
-if pd.notna(primeira) and pd.notna(ultima):
-    st.caption(
-        f"🗓️ Horizonte planejado: **{primeira.strftime('%d/%m/%Y')}** → "
-        f"**{ultima.strftime('%d/%m/%Y')}** · {em_conf_itens} itens já possuem confecção definida."
-    )
+with colunas_kpi2[2]:
+    with st.container(border=True):
+        periodo = (
+            f"{primeira.strftime('%d/%m/%y')} → {ultima.strftime('%d/%m/%y')}"
+            if pd.notna(primeira) and pd.notna(ultima)
+            else "—"
+        )
+        st.metric("🗓️ Horizonte", periodo, help="Primeira e última chegada planejada")
+    if pd.notna(primeira) and pd.notna(ultima):
+        st.caption(
+            f"🗓️ Horizonte planejado: **{primeira.strftime('%d/%m/%Y')}** → "
+            f"**{ultima.strftime('%d/%m/%Y')}** · {em_conf_itens} itens já possuem confecção definida."
+        )
     if entregas_atrasadas:
         st.warning(
             f"⚠️ {entregas_atrasadas} entrega(s) não couberam no intervalo e foram "
@@ -722,6 +731,121 @@ with st.expander("ℹ️ Como o planejamento é calculado", expanded=False):
 """
     )
 
+# ==================== TECIDO SUGERIDO ====================
+
+st.markdown("### 🧵 Tecido Sugerido")
+
+df_estoque_pf = preparar_estoque(df_estoque_raw) if df_estoque_raw is not None else None
+tecido_rows = []
+if df_estoque_pf is not None:
+    codigos_proj = set(df["Cód Confec"].tolist())
+    for _, row in df_estoque_pf.iterrows():
+        cod = row.get("Cód Confec_norm", "")
+        if cod not in codigos_proj:
+            continue
+        saldo5 = row.get("Saldo 5", np.nan)
+        if pd.isna(saldo5) or saldo5 >= 0:
+            continue
+        tec_faz = row.get('Tec Faz "x" Confec', np.nan)
+        cons = row.get("Cons. Unitário", np.nan)
+        if pd.isna(tec_faz):
+            tec_faz = 0
+        calc = float(saldo5) + float(tec_faz)
+        tecido = 0.0
+        if calc < 0:
+            tecido = (abs(calc) * 1.10) * (float(cons) if pd.notna(cons) else 0.0)
+        if tecido > 0:
+            tecido_rows.append({
+                "Cód Confec": cod,
+                "Descrição": str(row.get("Descrição", "") or ""),
+                "Marca": str(row.get("Marca", "Sem Marca") or "Sem Marca"),
+                "Saldo 5": saldo5,
+                "Tec Faz x Confec": tec_faz,
+                "Cons. Unitário": cons,
+                "Tecido Sugerido (m)": round(tecido, 3),
+            })
+
+tecido_pf = pd.DataFrame(tecido_rows)
+if tecido_pf.empty:
+    st.info("Não há itens com sugestão de tecido (Saldo 5 < 0) nos códigos da projeção.")
+else:
+    t1, t2, t3 = st.columns(3)
+    with t1:
+        with st.container(border=True):
+            st.metric("Itens com sugestão", fmt_num(len(tecido_pf)))
+    with t2:
+        with st.container(border=True):
+            st.metric("Total Tecido Sugerido (m)", f"{tecido_pf['Tecido Sugerido (m)'].sum():,.3f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    with t3:
+        with st.container(border=True):
+            st.metric("Códigos únicos", fmt_num(tecido_pf["Cód Confec"].nunique()))
+    with st.container(border=True):
+        st.dataframe(
+            tecido_pf.sort_values("Tecido Sugerido (m)", ascending=False).style.format({
+                "Saldo 5": "{:,.0f}",
+                "Tec Faz x Confec": "{:,.0f}",
+                "Cons. Unitário": "{:,.4f}",
+                "Tecido Sugerido (m)": "{:,.3f}",
+            }),
+            width="stretch",
+            hide_index=True,
+            height=300,
+        )
+
+# ==================== COMPRA SUGERIDA ====================
+
+st.markdown("### 🛒 Compra Sugerida (Reposição de Estoque)")
+
+compra_rows = []
+if df_estoque_pf is not None:
+    codigos_proj = set(df["Cód Confec"].tolist())
+    for _, row in df_estoque_pf.iterrows():
+        cod = row.get("Cód Confec_norm", "")
+        if cod not in codigos_proj:
+            continue
+        saldo5 = row.get("Saldo 5", np.nan)
+        if pd.isna(saldo5) or saldo5 >= 0:
+            continue
+        tec_faz = row.get('Tec Faz "x" Confec', np.nan)
+        if pd.isna(tec_faz):
+            tec_faz = 0
+        compra = abs(saldo5) * 1.10
+        if tec_faz:
+            compra = min(compra, tec_faz)
+        compra = __import__("math").ceil(compra)
+        if compra > 0:
+            compra_rows.append({
+                "Cód Confec": cod,
+                "Descrição": str(row.get("Descrição", "") or ""),
+                "Marca": str(row.get("Marca", "Sem Marca") or "Sem Marca"),
+                "Saldo 5": saldo5,
+                "Tec Faz x Confec": tec_faz,
+                "Compra Sugerida": compra,
+            })
+
+compra_pf = pd.DataFrame(compra_rows)
+if compra_pf.empty:
+    st.info("Não há itens com compra sugerida (Saldo 5 < 0) nos códigos da projeção.")
+else:
+    c1, c2 = st.columns(2)
+    with c1:
+        with st.container(border=True):
+            st.metric("Itens com compra sugerida", fmt_num(len(compra_pf)))
+    with c2:
+        with st.container(border=True):
+            st.metric("Total Compra Sugerida", fmt_num(compra_pf["Compra Sugerida"].sum()))
+    with st.container(border=True):
+        st.dataframe(
+            compra_pf.sort_values("Compra Sugerida", ascending=False).style.format({
+                "Saldo 5": "{:,.0f}",
+                "Tec Faz x Confec": "{:,.0f}",
+                "Compra Sugerida": "{:,.0f}",
+            }),
+            width="stretch",
+            hide_index=True,
+            height=300,
+        )
+
 # ==================== EXPORTAÇÃO ====================
 
 st.markdown("### 📥 Exportar")
@@ -765,6 +889,10 @@ def montar_excel():
             df[df["Em Confecção"]][
                 ["Pedido", "Cód Confec", "Produto", "Confecções", "Qtd", "Saldo"]
             ].to_excel(writer, index=False, sheet_name="Em Confecção")
+        if "tecido_pf" in globals() and not tecido_pf.empty:
+            tecido_pf.to_excel(writer, index=False, sheet_name="Tecido Sugerido")
+        if "compra_pf" in globals() and not compra_pf.empty:
+            compra_pf.to_excel(writer, index=False, sheet_name="Compra Sugerida")
     return buffer.getvalue()
 
 
