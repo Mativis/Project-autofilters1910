@@ -460,7 +460,7 @@ if pd.notna(primeira) and pd.notna(ultima):
 
 # ==================== GRÁFICOS ====================
 
-st.markdown("### 📊 Distribuição por Lote")
+st.markdown("### 📊 Entregas Planejadas")
 
 if lotes_ordenados:
     resumo = (
@@ -478,110 +478,109 @@ if lotes_ordenados:
         .sort_values("Chegada")
     )
 
-    grafico_esquerda, grafico_direita = st.columns([1.7, 1])
-    with grafico_esquerda:
-        with st.container(border=True):
-            figura = go.Figure()
-            figura.add_bar(
-                x=resumo["Lote"],
-                y=resumo["Necessidade"],
-                name="Necessidade líquida",
-                marker_color="#6366f1",
-                hovertemplate="<b>%{x}</b><br>Necessidade: %{y:,.0f}<extra></extra>",
-            )
-            figura.add_bar(
-                x=resumo["Lote"],
-                y=resumo["Saldo"],
-                name="Saldo em aberto",
-                marker_color="#8b5cf6",
-                hovertemplate="<b>%{x}</b><br>Saldo: %{y:,.0f}<extra></extra>",
-            )
-            figura.update_layout(
-                template=template_plotly(),
-                barmode="group",
-                height=420,
-                title="Volume por chegada de material",
-                xaxis_title="",
-                yaxis_title="Unidades",
-                legend=dict(orientation="h", y=1.12),
-                margin=dict(t=80, l=10, r=10, b=10),
-            )
-            st.plotly_chart(figura, width="stretch")
-
-    with grafico_direita:
-        with st.container(border=True):
-            por_operacao = (
-                df.groupby("Operação")
-                .agg(Necessidade=("Necessidade", "sum"))
-                .sort_values("Necessidade", ascending=False)
-                .reset_index()
-            )
-            if len(por_operacao) > 7:
-                resto = por_operacao.iloc[7:]["Necessidade"].sum()
-                por_operacao = pd.concat(
-                    [
-                        por_operacao.iloc[:7],
-                        pd.DataFrame([{"Operação": "Outros", "Necessidade": resto}]),
-                    ],
-                    ignore_index=True,
-                )
-            pizza = go.Figure(
-                go.Pie(
-                    labels=por_operacao["Operação"],
-                    values=por_operacao["Necessidade"],
-                    hole=0.55,
-                    marker=dict(colors=cores_grafico()),
-                    textinfo="percent",
-                )
-            )
-            pizza.update_layout(
-                template=template_plotly(),
-                height=420,
-                title="Necessidade por operação produtiva",
-                showlegend=True,
-                legend=dict(orientation="v", font=dict(size=11)),
-                margin=dict(t=80, l=10, r=10, b=10),
-            )
-            st.plotly_chart(pizza, width="stretch")
-
-    # Composição por operação em cada lote
     with st.container(border=True):
-        top_ops = df["Operação"].value_counts().head(6).index.tolist()
-        composicao = df.copy()
-        composicao["Operação (agrupada)"] = np.where(
-            composicao["Operação"].isin(top_ops), composicao["Operação"], "Outras"
+        figura = go.Figure()
+        figura.add_bar(
+            x=resumo["Lote"],
+            y=resumo["Necessidade"],
+            name="Necessidade líquida",
+            marker_color="#6366f1",
+            hovertemplate="<b>%{x}</b><br>Necessidade: %{y:,.0f}<extra></extra>",
         )
-        tabela_comp = (
-            composicao.pivot_table(
-                index="Lote",
-                columns="Operação (agrupada)",
-                values="Necessidade",
-                aggfunc="sum",
-                fill_value=0,
-            )
-            .reindex(resumo["Lote"])
-            .reset_index()
+        figura.add_bar(
+            x=resumo["Lote"],
+            y=resumo["Saldo"],
+            name="Saldo em aberto",
+            marker_color="#8b5cf6",
+            hovertemplate="<b>%{x}</b><br>Saldo: %{y:,.0f}<extra></extra>",
         )
-        ordem_ops = [c for c in tabela_comp.columns if c != "Lote"]
-        figura_comp = go.Figure()
-        for indice, operacao in enumerate(ordem_ops):
-            figura_comp.add_bar(
-                x=tabela_comp["Lote"],
-                y=tabela_comp[operacao],
-                name=str(operacao),
-                marker_color=cores_grafico()[indice % len(cores_grafico())],
-            )
-        figura_comp.update_layout(
+        figura.update_layout(
             template=template_plotly(),
-            barmode="stack",
-            height=420,
-            title="Composição dos lotes por operação",
+            barmode="group",
+            height=400,
+            title="Necessidade por entrega",
             xaxis_title="",
             yaxis_title="Unidades",
-            legend=dict(orientation="h", y=-0.25),
+            legend=dict(orientation="h", y=1.12),
             margin=dict(t=70, l=10, r=10, b=10),
         )
-        st.plotly_chart(figura_comp, width="stretch")
+        st.plotly_chart(figura, width="stretch")
+
+    with st.expander("📊 Gráficos detalhados", expanded=False):
+        g1, g2 = st.columns(2)
+        with g1:
+            with st.container(border=True):
+                por_operacao = (
+                    df.groupby("Operação")
+                    .agg(Necessidade=("Necessidade", "sum"))
+                    .sort_values("Necessidade", ascending=False)
+                    .reset_index()
+                )
+                if len(por_operacao) > 7:
+                    resto = por_operacao.iloc[7:]["Necessidade"].sum()
+                    por_operacao = pd.concat(
+                        [
+                            por_operacao.iloc[:7],
+                            pd.DataFrame([{"Operação": "Outros", "Necessidade": resto}]),
+                        ],
+                        ignore_index=True,
+                    )
+                pizza = go.Figure(
+                    go.Pie(
+                        labels=por_operacao["Operação"],
+                        values=por_operacao["Necessidade"],
+                        hole=0.55,
+                        marker=dict(colors=cores_grafico()),
+                        textinfo="percent",
+                    )
+                )
+                pizza.update_layout(
+                    template=template_plotly(),
+                    height=360,
+                    title="Necessidade por operação",
+                    showlegend=True,
+                    legend=dict(orientation="v", font=dict(size=10)),
+                    margin=dict(t=60, l=10, r=10, b=10),
+                )
+                st.plotly_chart(pizza, width="stretch")
+        with g2:
+            with st.container(border=True):
+                top_ops = df["Operação"].value_counts().head(6).index.tolist()
+                composicao = df.copy()
+                composicao["Operação (agrupada)"] = np.where(
+                    composicao["Operação"].isin(top_ops), composicao["Operação"], "Outras"
+                )
+                tabela_comp = (
+                    composicao.pivot_table(
+                        index="Lote",
+                        columns="Operação (agrupada)",
+                        values="Necessidade",
+                        aggfunc="sum",
+                        fill_value=0,
+                    )
+                    .reindex(resumo["Lote"])
+                    .reset_index()
+                )
+                ordem_ops = [c for c in tabela_comp.columns if c != "Lote"]
+                figura_comp = go.Figure()
+                for indice, operacao in enumerate(ordem_ops):
+                    figura_comp.add_bar(
+                        x=tabela_comp["Lote"],
+                        y=tabela_comp[operacao],
+                        name=str(operacao),
+                        marker_color=cores_grafico()[indice % len(cores_grafico())],
+                    )
+                figura_comp.update_layout(
+                    template=template_plotly(),
+                    barmode="stack",
+                    height=360,
+                    title="Composição por operação",
+                    xaxis_title="",
+                    yaxis_title="Unidades",
+                    legend=dict(orientation="h", y=-0.25, font=dict(size=9)),
+                    margin=dict(t=60, l=10, r=10, b=10),
+                )
+                st.plotly_chart(figura_comp, width="stretch")
 
     st.markdown("### 🗓️ Planejamento por Lote")
     with st.container(border=True):
