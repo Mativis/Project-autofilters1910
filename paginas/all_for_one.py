@@ -101,6 +101,11 @@ with st.sidebar:
         "Limite CAMEBA por entrega (%)",
         min_value=1, max_value=100, value=25, step=1, key="all_pct",
     )
+    qtd_min_item = st.number_input(
+        "Quantidade mínima por item (un.)",
+        min_value=0, max_value=100000, value=100, step=10, key="all_qtd_min",
+        help="Itens com necessidade abaixo desse valor são ignorados no planejamento.",
+    )
     inicio = st.date_input(
         "Início do planejamento",
         value=date.today(), key="all_inicio",
@@ -308,7 +313,7 @@ saldo2_total = float(df_all["Saldo 2 (est+trânsito)"].sum())
 saldo5_neg = int((df_all["Saldo 5"] < 0).sum())
 n_codigos = len(df_all)
 
-k = st.columns(7)
+k = st.columns(4)
 with k[0]:
     with st.container(border=True):
         st.metric("🧾 Códigos", fmt_num(n_codigos))
@@ -321,13 +326,14 @@ with k[2]:
 with k[3]:
     with st.container(border=True):
         st.metric("🎯 Necessidade Líquida", fmt_num(nec_total))
-with k[4]:
+k2 = st.columns(3)
+with k2[0]:
     with st.container(border=True):
         st.metric("🧵 Tecido Sugerido (m)", f"{tecido_total:,.3f}".replace(",", "X").replace(".", ",").replace("X", "."))
-with k[5]:
+with k2[1]:
     with st.container(border=True):
         st.metric("🛒 Compra Sugerida", fmt_num(compra_total))
-with k[6]:
+with k2[2]:
     with st.container(border=True):
         st.metric("📦 Saldo 2 (est+trânsito)", fmt_num(saldo2_total))
 
@@ -369,6 +375,7 @@ st.markdown("### 📅 Planejamento de Entregas (Consolidado)")
 if df_proj is not None:
     df_plan_base = df_proj.copy()
     df_plan_base["Data Necessidade"] = df_plan_base["Data Necessidade"] - pd.Timedelta(days=5)
+    df_plan_base["Necessidade"] = df_plan_base["Saldo"]
 else:
     # Deriva da demanda dos Pedidos (sem datas → usa hoje)
     linhas_p = []
@@ -400,6 +407,8 @@ if df_plan_base is not None and not df_plan_base.empty:
         df_plan_base = df_plan_base[
             df_plan_base["Dt Agendamento"].notna() | df_plan_base["Dt Entrega"].notna()
         ]
+    # Filtra itens com necessidade abaixo do mínimo por item
+    df_plan_base = df_plan_base[df_plan_base["Necessidade"] >= float(qtd_min_item)]
     if descontar_producao and "Necessidade" not in df_plan_base.columns:
         df_plan_base["Necessidade"] = df_plan_base["Saldo"]
     if "Necessidade" not in df_plan_base.columns:

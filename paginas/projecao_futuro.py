@@ -251,6 +251,11 @@ with st.sidebar:
         value=True,
         help="Remove itens que não possuem Dt. Agendamento nem Dt Entrega.",
     )
+    qtd_min_item_pf = st.number_input(
+        "Quantidade mínima por item (un.)",
+        min_value=0, max_value=100000, value=100, step=10, key="pf_qtd_min",
+        help="Itens com necessidade abaixo desse valor são ignorados no planejamento.",
+    )
     descontar_producao = st.checkbox(
         "Descontar produção já em confecção",
         value=True,
@@ -337,6 +342,12 @@ if df.empty:
         "Toda a demanda filtrada já está coberta por pedidos em produção. "
         "Desmarque **Descontar produção já em confecção** para ver o plano bruto."
     )
+    st.stop()
+
+# Filtra itens com necessidade abaixo do mínimo por item
+df = df[df["Necessidade"] >= float(qtd_min_item_pf)]
+if df.empty:
+    st.info("Nenhum item atinge a quantidade mínima por item configurada.")
     st.stop()
 
 # ==================== ENTREGAS COM CAPACIDADE E INTERVALO MÍNIMO ====================
