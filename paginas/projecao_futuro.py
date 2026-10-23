@@ -80,6 +80,7 @@ with st.sidebar:
             st.rerun()
 
 dados_proj = st.session_state.get("projecao_bytes")
+df_proj = None
 
 cabecalho(
     "📅 Projeção Futuro",
@@ -326,6 +327,13 @@ with st.sidebar:
         if 1 < len(valores) <= 200:
             filtros[coluna] = st.multiselect(rotulo, valores, default=valores, key=f"flt_{coluna}")
 
+    busca_cliente = st.text_input(
+        "Buscar cliente",
+        value="",
+        key="pf_busca_cliente",
+        help="Filtra por nome do cliente (contém).",
+    )
+
 df = proj.copy()
 if somente_abertos:
     df = df[df["Saldo"] > 0]
@@ -343,6 +351,10 @@ if data_nec_ate is not None:
 for coluna, selecionados in filtros.items():
     if selecionados:
         df = df[df[coluna].isin(selecionados)]
+
+# Busca por cliente
+if busca_cliente.strip():
+    df = df[df["Cliente"].str.contains(busca_cliente.strip(), case=False, na=False)]
 
 if df.empty:
     st.warning("Nenhum item encontrado com os filtros selecionados.")
@@ -470,6 +482,11 @@ df = df.drop(columns=["_is_cameba", "_vol"], errors="ignore")
 # ==================== KPIs ====================
 
 st.markdown("### 📈 Visão Geral do Planejamento")
+
+st.caption(
+    f"📄 **{len(df_proj) if df_proj is not None else 0}** linhas lidas da planilha de Projeção (após remoção de linhas de total). "
+    f"Após os filtros: **{len(df)}** itens."
+)
 
 qtd_total = float(df["Qtd"].sum())
 saldo_total = float(df["Saldo"].sum())
