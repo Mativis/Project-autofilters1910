@@ -341,7 +341,7 @@ if df.empty:
 
 # ==================== ENTREGAS COM CAPACIDADE E INTERVALO MÍNIMO ====================
 
-hoje = pd.Timestamp(inicio)
+hoje = pd.Timestamp(inicio) if inicio else pd.Timestamp(date.today())
 df["Data Necessidade"] = df["Data Necessidade"].fillna(hoje)
 df["Data Base"] = df["Data Necessidade"].where(df["Data Necessidade"] >= hoje, hoje)
 df["Semana Demanda"] = df["Data Base"].dt.normalize() - pd.to_timedelta(

@@ -46,6 +46,11 @@ pagina = st.navigation(
             title="Projeção Futuro",
             icon="📅",
         ),
+        st.Page(
+            "paginas/all_for_one.py",
+            title="All for One",
+            icon="🎯",
+        ),
     ],
     position="sidebar",
 )
