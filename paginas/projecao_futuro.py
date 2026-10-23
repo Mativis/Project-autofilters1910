@@ -293,6 +293,27 @@ with st.sidebar:
         help="Datas anteriores são reagendadas a partir desta data.",
     )
 
+    desconsiderar_atrasados = st.checkbox(
+        "Desconsiderar atrasados",
+        value=False,
+        help="Remove itens cuja data de necessidade já passou (atrasados).",
+        key="pf_desc_atrasados",
+    )
+
+    st.markdown("**Filtro de data de necessidade**")
+    data_nec_de = st.date_input(
+        "De",
+        value=None,
+        key="pf_data_nec_de",
+        help="Data de necessidade mínima (deixe vazio para não filtrar).",
+    )
+    data_nec_ate = st.date_input(
+        "Até",
+        value=None,
+        key="pf_data_nec_ate",
+        help="Data de necessidade máxima (deixe vazio para não filtrar).",
+    )
+
     filtros = {}
     for rotulo, coluna in (
         ("Status", "Status"),
@@ -310,6 +331,15 @@ if somente_abertos:
     df = df[df["Saldo"] > 0]
 if somente_com_data:
     df = df[df["Dt Agendamento"].notna() | df["Dt Entrega"].notna()]
+# Desconsiderar atrasados (data de necessidade já passou)
+if desconsiderar_atrasados:
+    hoje_ref = pd.Timestamp(inicio) if inicio else pd.Timestamp(date.today())
+    df = df[df["Data Necessidade"] >= hoje_ref]
+# Filtro de data de necessidade
+if data_nec_de is not None:
+    df = df[df["Data Necessidade"] >= pd.Timestamp(data_nec_de)]
+if data_nec_ate is not None:
+    df = df[df["Data Necessidade"] <= pd.Timestamp(data_nec_ate)]
 for coluna, selecionados in filtros.items():
     if selecionados:
         df = df[df[coluna].isin(selecionados)]
