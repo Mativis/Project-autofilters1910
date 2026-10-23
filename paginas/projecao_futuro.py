@@ -183,6 +183,24 @@ proj["Origem da Data"] = np.select(
 # Remove linhas de total/resumo
 proj = proj[(proj["Pedido"].str.strip() != "") & (proj["Cód Confec"].str.strip() != "")]
 proj = proj.reset_index(drop=True)
+
+# ==================== CRUZAMENTO COM ESTOQUE (TECIDO) ====================
+
+estoque_lookup = {}
+if df_estoque_raw is not None:
+    est_prep = preparar_estoque(df_estoque_raw)
+    for _, row in est_prep.iterrows():
+        cod = row.get("Cód Confec_norm", "")
+        if cod:
+            estoque_lookup[cod] = {
+                "Saldo 5": row.get("Saldo 5"),
+                "Tec Faz x Confec": row.get('Tec Faz "x" Confec'),
+                "Cons. Unitário": row.get("Cons. Unitário"),
+            }
+proj["Saldo 5"] = proj["Cód Confec"].map(lambda c: estoque_lookup.get(c, {}).get("Saldo 5"))
+proj["Tec Faz x Confec"] = proj["Cód Confec"].map(lambda c: estoque_lookup.get(c, {}).get("Tec Faz x Confec"))
+proj["Cons. Unitário"] = proj["Cód Confec"].map(lambda c: estoque_lookup.get(c, {}).get("Cons. Unitário"))
+
 df_proj = proj
 
 # ==================== CRUZAMENTO COM PEDIDOS (EM CONFECÇÃO) ====================
@@ -261,6 +279,11 @@ with st.sidebar:
         min_value=0, max_value=100000, value=100, step=10, key="pf_qtd_min",
         help="Itens com necessidade total (somada por Cód Confec) abaixo desse valor são exibidos separadamente.",
     )
+    desconsiderar_sem_tecido = st.checkbox(
+        "Desconsiderar itens sem tecido disponível",
+        value=False, key="pf_desc_tecido",
+        help="Remove itens cujo Saldo 5 (tecido) é insuficiente para a necessidade.",
+    )
     descontar_producao = st.checkbox(
         "Descontar produção já em confecção",
         value=True, key="pf_desc_prod",
@@ -321,6 +344,20 @@ for coluna, selecionados in filtros.items():
         df = df[df[coluna].isin(selecionados)]
 if busca_cliente.strip():
     df = df[df["Cliente"].str.contains(busca_cliente.strip(), case=False, na=False)]
+
+# Desconsiderar itens sem tecido disponível (Saldo 5 insuficiente)
+if desconsiderar_sem_tecido:
+    def _tem_tecido(row):
+        s5 = row.get("Saldo 5")
+        cons = row.get("Cons. Unitário")
+        nec = row.get("Necessidade", 0)
+        if pd.isna(s5):
+            return False
+        if pd.isna(cons) or cons == 0:
+            return True  # sem consumo unitário definido, não bloqueia
+        tecido_nec = float(nec) * float(cons)
+        return float(s5) >= tecido_nec
+    df = df[df.apply(_tem_tecido, axis=1)]
 
 if df.empty:
     st.warning("Nenhum item encontrado com os filtros selecionados.")
@@ -508,6 +545,9 @@ if not df.empty:
                 "Em Confecção": row["Em Confecção"],
                 "Confecções": row["Confecções"],
                 "Segmento": row["Segmento"],
+                "Saldo 5": row.get("Saldo 5") if "Saldo 5" in row.index else None,
+                "Tec Faz x Confec": row.get('Tec Faz "x" Confec') if 'Tec Faz "x" Confec' in row.index else None,
+                "Cons. Unitário": row.get("Cons. Unitário") if "Cons. Unitário" in row.index else None,
             })
     df = pd.DataFrame(linhas_plan)
     df["CAMEBA"] = df["CAMEBA"].astype(bool)
@@ -560,6 +600,19 @@ with colunas_kpi2[2]:
         st.metric("🗓️ Horizonte", periodo, help="Primeira e última chegada planejada")
 if pd.notna(primeira) and pd.notna(ultima):
     st.caption(f"🗓️ Horizonte planejado: **{primeira.strftime('%d/%m/%Y')}** → **{ultima.strftime('%d/%m/%Y')}** · {em_conf_itens} itens já possuem confecção definida.")
+    if "Saldo 5" in df.columns:
+        def _sem_tecido(row):
+            s5 = row.get("Saldo 5")
+            cons = row.get("Cons. Unitário")
+            nec = row.get("Necessidade", 0)
+            if pd.isna(s5):
+                return True
+            if pd.isna(cons) or cons == 0:
+                return False
+            return float(s5) < float(nec) * float(cons)
+        n_sem_tecido = int(df.apply(_sem_tecido, axis=1).sum())
+        if n_sem_tecido > 0:
+            st.warning(f"⚠️ {n_sem_tecido} item(ns) sem tecido suficiente para a necessidade planejada.")
 if entregas_atrasadas:
     st.warning(f"⚠️ {entregas_atrasadas} entrega(s) antecipadas para não ultrapassar a data de necessidade.")
 
@@ -660,6 +713,12 @@ if not df.empty:
                     part_info = f" (parte {chunk_label})" if total_chunks > 1 else ""
                     cameba = bool(grupo["CAMEBA"].iloc[0]) if "CAMEBA" in grupo.columns else False
                     st.markdown(f"**Item `{cod}` — {produto} — {fmt_num(total_item)} unidades{part_info}**" + ("  (CAMEBA)" if cameba else ""))
+                    s5 = grupo["Saldo 5"].iloc[0] if "Saldo 5" in grupo.columns else None
+                    cons = grupo["Cons. Unitário"].iloc[0] if "Cons. Unitário" in grupo.columns else None
+                    if pd.notna(s5):
+                        tec_nec = float(total_item) * float(cons) if pd.notna(cons) and cons else 0.0
+                        status = "✅" if (pd.isna(cons) or cons == 0 or float(s5) >= tec_nec) else "⚠️ sem tecido suficiente"
+                        st.caption(f"🧵 Tecido: disponível {fmt_num(s5)} | necessário {fmt_num(tec_nec)} {status}")
                     linhas_pedido = []
                     for _, row in grupo.sort_values("Data Necessidade").iterrows():
                         linhas_pedido.append(f"- Pedido **{row['Pedido']}** — {fmt_num(row['Necessidade'])} un — necessidade {fmt_data(row['Data Necessidade'])} ({row['Origem da Data']})")
