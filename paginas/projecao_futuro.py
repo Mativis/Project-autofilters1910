@@ -465,7 +465,9 @@ if not df.empty:
         if prev is not None and candidato < prev + intervalo:
             candidato = prev + intervalo
         prazos = [c["orders"]["Data Necessidade"].min() for c in entrega["chunks"]]
-        prazo = pd.Timestamp(min(prazos)) if prazos else pd.Timestamp(hoje_ref)
+        prazo_raw = pd.Timestamp(min(prazos)) if prazos else pd.Timestamp(hoje_ref)
+        # Prazo nunca pode ser anterior à semana de demanda nem ao início do planejamento
+        prazo = max(prazo_raw, pd.Timestamp(entrega["week"]), pd.Timestamp(hoje_ref))
         entrega["prazo"] = prazo
         if candidato > prazo:
             candidato = prazo

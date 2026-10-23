@@ -476,7 +476,8 @@ if df_plan_base is not None and not df_plan_base.empty:
         candidato = pd.Timestamp(entrega["week"])
         if prev is not None and candidato < prev + intervalo:
             candidato = prev + intervalo
-        prazo = pd.Timestamp(df_plan_base.loc[entrega["items"], "Data Necessidade"].min())
+        prazo_raw = pd.Timestamp(df_plan_base.loc[entrega["items"], "Data Necessidade"].min())
+        prazo = max(prazo_raw, pd.Timestamp(entrega["week"]), pd.Timestamp(inicio) if inicio else pd.Timestamp(date.today()))
         entrega["prazo"] = prazo
         if candidato > prazo:
             candidato = prazo
