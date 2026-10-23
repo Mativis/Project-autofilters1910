@@ -153,6 +153,11 @@ proj["Coleção"] = coluna_texto(bruto, "Coleção", padrao="Sem Coleção")
 proj["Operação"] = coluna_texto(bruto, "Operação Produtiva", "Ope. produtiva", padrao="Sem Operação")
 proj["Status"] = coluna_texto(bruto, "Sts do Pedido", "Status", padrao="Sem Status")
 proj["Status Entrega"] = coluna_texto(bruto, "Status da Entrega", padrao="—")
+proj["Segmento"] = coluna_texto(bruto, "Segmento", padrao="")
+
+# Remove linhas de total/resumo da planilha (sem Pedido ou sem Cód Prod)
+proj = proj[(proj["Pedido"].str.strip() != "") & (proj["Cód Confec"].str.strip() != "")]
+proj = proj.reset_index(drop=True)
 proj["Qtd"] = coluna_numero(bruto, "Qtd *", "Qtd").fillna(0.0)
 proj["Saldo Calc."] = coluna_numero(bruto, "Saldo Calc.").fillna(0.0)
 proj["Em Trânsito"] = coluna_numero(bruto, "Em Trânsito").fillna(0.0)
@@ -254,6 +259,23 @@ with st.sidebar:
         value=1,
         step=1,
     )
+    capacidade_entrega = st.number_input(
+        "Capacidade por entrega (unidades)",
+        min_value=1000,
+        max_value=100000,
+        value=23000,
+        step=1000,
+        help="Limite máximo de unidades por entrega.",
+    )
+    pct_cameba = st.number_input(
+        "Limite CAMEBA por entrega (%)",
+        min_value=1,
+        max_value=100,
+        value=25,
+        step=1,
+        help="Percentual da capacidade destinado ao segmento CAMEBA.",
+    )
+
     inicio = st.date_input(
         "Início do planejamento",
         value=date.today(),
@@ -310,7 +332,7 @@ if df.empty:
     )
     st.stop()
 
-# ==================== LOTE SEMANAL COM INTERVALO MÍNIMO ====================
+# ==================== ENTREGAS COM CAPACIDADE E INTERVALO MÍNIMO ====================
 
 hoje = pd.Timestamp(inicio)
 df["Data Necessidade"] = df["Data Necessidade"].fillna(hoje)
@@ -319,25 +341,71 @@ df["Semana Demanda"] = df["Data Base"].dt.normalize() - pd.to_timedelta(
     df["Data Base"].dt.weekday, unit="D"
 )
 
-intervalo = pd.Timedelta(weeks=int(intervalo_semanas))
-chegadas = {}
-ultima_chegada = None
-for semana in sorted(df["Semana Demanda"].dropna().unique()):
-    chegada = pd.Timestamp(semana)
-    if ultima_chegada is not None and chegada < ultima_chegada + intervalo:
-        chegada = ultima_chegada + intervalo
-    chegadas[pd.Timestamp(semana)] = chegada
-    ultima_chegada = chegada
+df["_is_cameba"] = df["Segmento"].astype(str).str.strip().str.upper() == "CAMEBA"
+df["_vol"] = pd.to_numeric(df["Necessidade"], errors="coerce").fillna(0.0)
 
-df["Chegada Material"] = df["Semana Demanda"].map(chegadas)
+capacidade_entrega = float(capacidade_entrega)
+capacidade_cameba = capacidade_entrega * (float(pct_cameba) / 100.0)
+intervalo = pd.Timedelta(weeks=int(intervalo_semanas))
+
+# Empacotamento por semana: respeita capacidade total e limite CAMEBA
+entregas = []  # cada: items, week, total, cameba
+for semana in sorted(df["Semana Demanda"].dropna().unique()):
+    itens_semana = df[df["Semana Demanda"] == semana].sort_values("_vol", ascending=False)
+    for _, linha in itens_semana.iterrows():
+        colocado = False
+        for entrega in entregas:
+            if entrega["week"] != semana:
+                continue
+            if (entrega["total"] + float(linha["_vol"]) <= capacidade_entrega and
+                    (not bool(linha["_is_cameba"]) or
+                     entrega["cameba"] + float(linha["_vol"]) <= capacidade_cameba)):
+                entrega["items"].append(linha.name)
+                entrega["total"] += float(linha["_vol"])
+                if bool(linha["_is_cameba"]):
+                    entrega["cameba"] += float(linha["_vol"])
+                colocado = True
+                break
+        if not colocado:
+            entregas.append({
+                "items": [linha.name],
+                "week": semana,
+                "total": float(linha["_vol"]),
+                "cameba": float(linha["_vol"]) if bool(linha["_is_cameba"]) else 0.0,
+            })
+
+# Agendamento com intervalo mínimo entre entregas
+prev = None
+for entrega in entregas:
+    candidato = pd.Timestamp(entrega["week"])
+    if prev is not None and candidato < prev + intervalo:
+        candidato = prev + intervalo
+    entrega["agendada"] = candidato
+    prev = candidato
+
+mapa_item_entrega = {}
+for idx_entrega, entrega in enumerate(entregas):
+    for item in entrega["items"]:
+        mapa_item_entrega[item] = idx_entrega
+
+df["EntregaID"] = df.index.map(mapa_item_entrega)
+df["Chegada Material"] = df["EntregaID"].map(lambda i: entregas[i]["agendada"])
+
 df = df.sort_values(["Chegada Material", "Data Base", "Pedido"], kind="stable").reset_index(drop=True)
 
 lotes_ordenados = sorted(df["Chegada Material"].dropna().unique())
 rotulo_lote = {
-    chegada: f"Lote {indice + 1:02d} · {pd.Timestamp(chegada).strftime('%d/%m/%Y')}"
+    chegada: f"Entrega {indice + 1:02d} · {pd.Timestamp(chegada).strftime('%d/%m/%Y')}"
     for indice, chegada in enumerate(lotes_ordenados)
 }
 df["Lote"] = df["Chegada Material"].map(rotulo_lote).fillna("Sem data")
+
+# Mantém flag CAMEBA para exibição/exportação
+df["CAMEBA"] = df["Segmento"].astype(str).str.strip().str.upper() == "CAMEBA"
+df["Nec CAMEBA"] = df["Necessidade"].where(df["CAMEBA"], 0.0)
+
+# Limpa colunas auxiliares
+df = df.drop(columns=["_is_cameba", "_vol"], errors="ignore")
 
 # ==================== KPIs ====================
 
@@ -402,6 +470,7 @@ if lotes_ordenados:
             Qtd=("Qtd", "sum"),
             Saldo=("Saldo", "sum"),
             Necessidade=("Necessidade", "sum"),
+            CAMEBA=("Nec CAMEBA", "sum"),
             EmConf=("Em Confecção", "sum"),
             Chegada=("Chegada Material", "first"),
         )
@@ -527,6 +596,7 @@ if lotes_ordenados:
                     "Qtd": "Qtd pedida",
                     "Saldo": "Saldo em aberto",
                     "Necessidade": "Necessidade líquida",
+                    "CAMEBA": "CAMEBA (un.)",
                     "EmConf": "Itens já em confecção",
                 }
             ),
@@ -555,6 +625,7 @@ colunas_detalhe = [
     "Saldo",
     "Coberto pela Produção",
     "Necessidade",
+    "CAMEBA",
     "Data Necessidade",
     "Origem da Data",
     "Em Confecção",
@@ -609,9 +680,9 @@ with st.expander("ℹ️ Como o planejamento é calculado", expanded=False):
 4. A **necessidade líquida** desconta, por código, o saldo dos pedidos que já possuem
    confecção na planilha de Pedidos (os itens mais urgentes são cobertos primeiro).
 5. Os itens são agrupados na semana da data de necessidade.
-6. Cada semana recebe uma data de chegada de material; se a diferença para a chegada
-   anterior for menor que **{int(intervalo_semanas)} semana(s)**, a chegada é empurrada
-   para `última chegada + {int(intervalo_semanas)} semana(s)`.
+6. Cada **entrega** respeita **{int(capacidade_entrega):,} unidades** no total e no máximo
+   **{int(capacidade_cameba):,} unidades** ({int(pct_cameba)}%) para o segmento **CAMEBA**.
+7. As entregas são espaçadas pelo intervalo mínimo configurado.
 """
     )
 
@@ -636,6 +707,7 @@ def montar_excel():
             "Saldo",
             "Coberto pela Produção",
             "Necessidade",
+            "CAMEBA",
             "Dt Agendamento",
             "Dt Entrega",
             "Dt Pedido",
