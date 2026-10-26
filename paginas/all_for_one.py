@@ -480,7 +480,6 @@ if df_plan_base is not None and not df_plan_base.empty:
         prazo = max(prazo_raw, pd.Timestamp(entrega["week"]), pd.Timestamp(inicio) if inicio else pd.Timestamp(date.today()))
         entrega["prazo"] = prazo
         if candidato > prazo:
-            candidato = prazo
             entrega["atrasada"] = True
             entregas_atrasadas += 1
         else:

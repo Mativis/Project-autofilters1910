@@ -507,7 +507,6 @@ if not df.empty:
         prazo = max(prazo_raw, pd.Timestamp(entrega["week"]), pd.Timestamp(hoje_ref))
         entrega["prazo"] = prazo
         if candidato > prazo:
-            candidato = prazo
             entrega["atrasada"] = True
             entregas_atrasadas += 1
         else:
