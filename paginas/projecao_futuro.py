@@ -3,22 +3,6 @@ Projeção Futuro
 ---------------
 Planejamento de produção a partir da planilha **Projeção.xlsx**, cruzada com
 os arquivos de Pedidos e Estoque já carregados no sistema.
-
-Regras
-------
-* A data de necessidade de cada item é, em ordem de prioridade:
-  ``Dt. Agendamento`` -> ``Dt Entrega`` -> ``Dt Pedido``.
-* O material é pré-disposto 5 dias antes dessa data.
-* As chegadas de material são agrupadas em entregas respeitando um intervalo
-  mínimo (padrão: 1 semana) entre uma chegada e a seguinte, e **não ultrapassam**
-  a data de necessidade.
-* Cada entrega respeita 23.000 unidades no total e no máximo 25% (5.750) para o
-  segmento CAMEBA.
-* Cada item (Cód Confec) tem no máximo 700 unidades por entrega e no mínimo 100.
-  Itens com necessidade total < 100 são exibidos separadamente.
-* Pedidos que já possuem confecção (cruzamento por ``Cód Confec`` com a
-  planilha de Pedidos) são sinalizados e podem ser incluídos ou não no
-  planejamento.
 """
 
 import io
@@ -70,7 +54,7 @@ with st.sidebar:
             f'<span class="db-file-name">{nome_proj}</span></div>',
             unsafe_allow_html=True,
         )
-        if st.button("🔄 Trocar projeção", key="btn_trocar_proj_pf"):
+        if st.button("🔄 Trocar projeção", key="btn_trocar_proj_pf2"):
             for chave in CHAVES_PROJ:
                 st.session_state.pop(chave, None)
             st.rerun()
@@ -78,9 +62,8 @@ with st.sidebar:
         upload = st.file_uploader(
             "Arquivo **Projeção** (.xlsx)",
             type=["xlsx", "xls"],
-            key="upload_projecao_pf",
-            help="Planilha com a demanda futura (Pedido, Cód Prod, Qtd *, Saldo Calc., "
-            "Dt. Agendamento, Dt Entrega, Operação Produtiva...).",
+            key="upload_projecao_pf2",
+            help="Planilha com a demanda futura.",
         )
         if upload is not None:
             st.session_state["projecao_bytes"] = upload.getvalue()
@@ -92,16 +75,12 @@ df_proj = None
 
 cabecalho(
     "📅 Projeção Futuro",
-    "Planejamento de produção por entregas, priorizando a data de "
-    f"agendamento e garantindo intervalo mínimo entre chegadas de material — "
+    "Planejamento de produção por entregas — "
     f"referência: {date.today().strftime('%d/%m/%Y')}",
 )
 
 if not dados_proj:
-    st.info(
-        "👆 Envie a planilha **Projeção.xlsx** na barra lateral para gerar o planejamento. "
-        "Os arquivos de **Pedidos** e **Estoque** já carregados são usados no cruzamento."
-    )
+    st.info("👆 Envie a planilha **Projeção.xlsx** na barra lateral.")
     st.stop()
 
 # ==================== NORMALIZAÇÃO ====================
@@ -151,9 +130,7 @@ if bruto is None or bruto.empty:
 
 proj = pd.DataFrame(index=bruto.index)
 proj["Pedido"] = coluna_texto(bruto, "Pedido", "Ped Cliente").map(normalizar_cod)
-proj["Cód Confec"] = para_texto(coluna_texto(bruto, "Cód Prod", "Cod. Produto", "Cód Confec")).map(
-    normalizar_cod
-)
+proj["Cód Confec"] = para_texto(coluna_texto(bruto, "Cód Prod", "Cod. Produto", "Cód Confec")).map(normalizar_cod)
 proj["Produto"] = coluna_texto(bruto, "Produto", "Descrição", padrao="Sem descrição")
 proj["Cliente"] = coluna_texto(bruto, "Cliente", padrao="—")
 proj["Marca"] = coluna_texto(bruto, "Marca", padrao="Sem Marca")
@@ -170,40 +147,27 @@ proj["Saldo"] = ((proj["Qtd"] - proj["Saldo Calc."]) - proj["Em Trânsito"]).cli
 proj["Dt Agendamento"] = coluna_data(bruto, "Dt. Agendamento", "Dt Agendamento")
 proj["Dt Entrega"] = coluna_data(bruto, "Dt Entrega", "Dt. Entrega")
 proj["Dt Pedido"] = coluna_data(bruto, "Dt Pedido", "Dt. Pedido")
+proj["Data Necessidade"] = (proj["Dt Agendamento"].fillna(proj["Dt Entrega"]).fillna(proj["Dt Pedido"])) - pd.Timedelta(days=5)
+proj["Origem da Data"] = np.select([proj["Dt Agendamento"].notna(), proj["Dt Entrega"].notna()], ["Agendamento", "Entrega"], default="Pedido")
 
-# Data de necessidade: agendamento -> entrega -> pedido, antecipada 5 dias
-proj["Data Necessidade"] = (
-    proj["Dt Agendamento"].fillna(proj["Dt Entrega"]).fillna(proj["Dt Pedido"])
-) - pd.Timedelta(days=5)
-proj["Origem da Data"] = np.select(
-    [proj["Dt Agendamento"].notna(), proj["Dt Entrega"].notna()],
-    ["Agendamento", "Entrega"], default="Pedido",
-)
-
-# Remove linhas de total/resumo
-proj = proj[(proj["Pedido"].str.strip() != "") & (proj["Cód Confec"].str.strip() != "")]
-proj = proj.reset_index(drop=True)
-
-# ==================== CRUZAMENTO COM ESTOQUE (TECIDO) ====================
-
+# Cruzamento com Estoque (tecido)
 estoque_lookup = {}
 if df_estoque_raw is not None:
     est_prep = preparar_estoque(df_estoque_raw)
     for _, row in est_prep.iterrows():
         cod = row.get("Cód Confec_norm", "")
         if cod:
-            estoque_lookup[cod] = {
-                "Saldo 5": row.get("Saldo 5"),
-                "Tec Faz x Confec": row.get('Tec Faz "x" Confec'),
-                "Cons. Unitário": row.get("Cons. Unitário"),
-            }
+            estoque_lookup[cod] = {"Saldo 5": row.get("Saldo 5"), "Tec Faz x Confec": row.get('Tec Faz "x" Confec'), "Cons. Unitário": row.get("Cons. Unitário")}
 proj["Saldo 5"] = proj["Cód Confec"].map(lambda c: estoque_lookup.get(c, {}).get("Saldo 5"))
 proj["Tec Faz x Confec"] = proj["Cód Confec"].map(lambda c: estoque_lookup.get(c, {}).get("Tec Faz x Confec"))
 proj["Cons. Unitário"] = proj["Cód Confec"].map(lambda c: estoque_lookup.get(c, {}).get("Cons. Unitário"))
 
+# Remove total row
+proj = proj[(proj["Pedido"].str.strip() != "") & (proj["Cód Confec"].str.strip() != "")]
+proj = proj.reset_index(drop=True)
 df_proj = proj
 
-# ==================== CRUZAMENTO COM PEDIDOS (EM CONFECÇÃO) ====================
+# ==================== CRUZAMENTO COM PEDIDOS ====================
 
 proj["Confecções"] = ""
 proj["Em Confecção"] = False
@@ -220,24 +184,10 @@ if df_pedidos is not None and not df_pedidos.empty:
         codigos_ped = para_texto(ped[col_cod_ped]).map(normalizar_cod)
         nomes_conf = para_texto(ped[col_conf_ped]).str.strip()
         col_saldo_ped = localizar_coluna(ped, "Saldo")
-        if col_saldo_ped is not None:
-            saldo_ped = pd.to_numeric(ped[col_saldo_ped], errors="coerce").fillna(0.0)
-        else:
-            saldo_ped = pd.Series(0.0, index=ped.index)
-        em_producao = nomes_conf.str.len() > 0
-        em_producao &= ~nomes_conf.str.upper().str.startswith("SEM")
+        saldo_ped = pd.to_numeric(ped[col_saldo_ped], errors="coerce").fillna(0.0) if col_saldo_ped else pd.Series(0.0, index=ped.index)
+        em_producao = (nomes_conf.str.len() > 0) & (~nomes_conf.str.upper().str.startswith("SEM"))
         if em_producao.any():
-            tabela_conf = (
-                pd.DataFrame({
-                    "codigo": codigos_ped[em_producao],
-                    "confecao": nomes_conf[em_producao],
-                    "saldo": saldo_ped[em_producao],
-                })
-                .query("codigo != ''")
-                .groupby("codigo", as_index=True)
-                .agg(Confecções=("confecao", lambda s: ", ".join(sorted(set(s)))),
-                     Qtd=("saldo", "sum"))
-            )
+            tabela_conf = pd.DataFrame({"codigo": codigos_ped[em_producao], "confecao": nomes_conf[em_producao], "saldo": saldo_ped[em_producao]}).query("codigo != ''").groupby("codigo").agg(Confecções=("confecao", lambda s: ", ".join(sorted(set(s)))), Qtd=("saldo", "sum"))
             producao_por_codigo = tabela_conf["Qtd"]
             proj["Confecções"] = proj["Cód Confec"].map(tabela_conf["Confecções"]).fillna("")
             proj["Qtd em Produção"] = proj["Cód Confec"].map(producao_por_codigo).fillna(0.0).astype(float)
@@ -246,81 +196,36 @@ if df_pedidos is not None and not df_pedidos.empty:
 df_proj = proj
 
 if df_pedidos is None and df_proj is None:
-    st.info("👆 Envie ao menos o arquivo de **Pedidos** ou **Projeção** na barra lateral.")
+    st.info("👆 Envie ao menos o arquivo de **Pedidos** ou **Projeção**.")
     st.stop()
 
 # ==================== FILTROS ====================
 
 
 def opcoes(coluna):
-    return sorted(valor for valor in proj[coluna].dropna().unique() if str(valor).strip())
+    return sorted(v for v in proj[coluna].dropna().unique() if str(v).strip())
 
 
 with st.sidebar:
     st.markdown("---")
     st.header("🔍 Filtros da Projeção")
-    somente_abertos = st.checkbox(
-        "Somente com necessidade de material (Saldo > 0)",
-        value=True, key="pf_abertos",
-        help="Saldo = ((Qtd* - Saldo Calc.) - Em Trânsito).",
-    )
-    somente_com_data = st.checkbox(
-        "Desconsiderar pedidos sem data de agendamento ou entrega",
-        value=True, key="pf_com_data",
-        help="Remove itens sem Dt. Agendamento nem Dt Entrega.",
-    )
-    desconsiderar_atrasados = st.checkbox(
-        "Desconsiderar atrasados",
-        value=False, key="pf_desc_atrasados",
-        help="Remove itens cuja data de necessidade já passou.",
-    )
-    qtd_min_item_pf = st.number_input(
-        "Quantidade mínima por item (un.)",
-        min_value=0, max_value=100000, value=100, step=10, key="pf_qtd_min",
-        help="Itens com necessidade total (somada por Cód Confec) abaixo desse valor são exibidos separadamente.",
-    )
-    desconsiderar_sem_tecido = st.checkbox(
-        "Desconsiderar itens sem tecido disponível",
-        value=False, key="pf_desc_tecido",
-        help="Remove itens cujo Saldo 5 (tecido) é insuficiente para a necessidade.",
-    )
-    descontar_producao = st.checkbox(
-        "Descontar produção já em confecção",
-        value=True, key="pf_desc_prod",
-        help="Abate do saldo a quantidade já em produção na planilha de Pedidos.",
-    )
-    intervalo_semanas = st.number_input(
-        "Intervalo mínimo entre chegadas (semanas)",
-        min_value=1, max_value=8, value=1, step=1, key="pf_intervalo",
-    )
-    capacidade_entrega = st.number_input(
-        "Capacidade por entrega (unidades)",
-        min_value=1000, max_value=100000, value=23000, step=1000, key="pf_cap",
-    )
-    pct_cameba = st.number_input(
-        "Limite CAMEBA por entrega (%)",
-        min_value=1, max_value=100, value=25, step=1, key="pf_pct",
-    )
-    inicio = st.date_input(
-        "Início do planejamento",
-        value=date.today(), key="pf_inicio",
-        help="Datas anteriores são reagendadas a partir desta data.",
-    )
-    busca_cliente = st.text_input(
-        "Buscar cliente", value="", key="pf_busca",
-        help="Filtra por nome do cliente (contém).",
-    )
+    somente_abertos = st.checkbox("Somente com necessidade de material (Saldo > 0)", value=True, key="pf_abertos", help="Saldo = ((Qtd* - Saldo Calc.) - Em Trânsito).")
+    somente_com_data = st.checkbox("Desconsiderar pedidos sem data de agendamento ou entrega", value=True, key="pf_com_data")
+    desconsiderar_atrasados = st.checkbox("Desconsiderar atrasados", value=False, key="pf_desc_atrasados")
+    qtd_min_item_pf = st.number_input("Quantidade mínima por item (un.)", min_value=0, max_value=100000, value=100, step=10, key="pf_qtd_min", help="Itens com necessidade total (somada por Cód Confec) abaixo desse valor são exibidos separadamente.")
+    semanas_distribuir = st.number_input("Semanas para distribuir a demanda", min_value=1, max_value=52, value=4, step=1, key="pf_semanas_dist", help="A demanda de cada item é dividida igualmente por esse número de semanas.")
+    descontar_producao = st.checkbox("Descontar produção já em confecção", value=True, key="pf_desc_prod")
+    desconsiderar_sem_tecido = st.checkbox("Desconsiderar itens sem tecido disponível", value=False, key="pf_desc_tecido")
+    intervalo_semanas = st.number_input("Intervalo mínimo entre chegadas (semanas)", min_value=1, max_value=8, value=1, step=1, key="pf_intervalo")
+    capacidade_entrega = st.number_input("Capacidade por entrega (unidades)", min_value=1000, max_value=100000, value=23000, step=1000, key="pf_cap")
+    pct_cameba = st.number_input("Limite CAMEBA por entrega (%)", min_value=1, max_value=100, value=25, step=1, key="pf_pct")
+    inicio = st.date_input("Início do planejamento", value=date.today(), key="pf_inicio")
+    busca_cliente = st.text_input("Buscar cliente", value="", key="pf_busca")
     st.markdown("**Filtro de data de necessidade**")
     data_nec_de = st.date_input("De", value=None, key="pf_nec_de")
     data_nec_ate = st.date_input("Até", value=None, key="pf_nec_ate")
     filtros = {}
-    for rotulo, coluna in (
-        ("Status", "Status"),
-        ("Marca", "Marca"),
-        ("Operação Produtiva", "Operação"),
-        ("Grupo do Cliente", "Grupo"),
-        ("Coleção", "Coleção"),
-    ):
+    for rotulo, coluna in (("Status", "Status"), ("Marca", "Marca"), ("Operação Produtiva", "Operação"), ("Grupo do Cliente", "Grupo"), ("Coleção", "Coleção")):
         valores = opcoes(coluna)
         if 1 < len(valores) <= 200:
             filtros[coluna] = st.multiselect(rotulo, valores, default=valores, key=f"pf_flt_{coluna}")
@@ -344,19 +249,16 @@ for coluna, selecionados in filtros.items():
         df = df[df[coluna].isin(selecionados)]
 if busca_cliente.strip():
     df = df[df["Cliente"].str.contains(busca_cliente.strip(), case=False, na=False)]
-
-# Desconsiderar itens sem tecido disponível (Saldo 5 insuficiente)
 if desconsiderar_sem_tecido:
     def _tem_tecido(row):
         s5 = row.get("Saldo 5")
         cons = row.get("Cons. Unitário")
-        nec = row.get("Necessidade", 0)
+        nec = row.get("Necessidade", row.get("Saldo", 0))
         if pd.isna(s5):
             return False
         if pd.isna(cons) or cons == 0:
-            return True  # sem consumo unitário definido, não bloqueia
-        tecido_nec = float(nec) * float(cons)
-        return float(s5) >= tecido_nec
+            return True
+        return float(s5) >= float(nec) * float(cons)
     df = df[df.apply(_tem_tecido, axis=1)]
 
 if df.empty:
@@ -368,9 +270,7 @@ if df.empty:
 df = df.sort_values(["Cód Confec", "Data Necessidade", "Pedido"], kind="stable").reset_index(drop=True)
 df["Produção Disponível"] = df["Cód Confec"].map(producao_por_codigo).fillna(0.0).astype(float)
 acumulado_antes = df.groupby("Cód Confec")["Saldo"].cumsum() - df["Saldo"]
-df["Coberto pela Produção"] = np.minimum(
-    (df["Produção Disponível"] - acumulado_antes).clip(lower=0), df["Saldo"]
-)
+df["Coberto pela Produção"] = np.minimum((df["Produção Disponível"] - acumulado_antes).clip(lower=0), df["Saldo"])
 df["Necessidade"] = (df["Saldo"] - df["Coberto pela Produção"]).clip(lower=0)
 
 if descontar_producao:
@@ -393,60 +293,48 @@ if df.empty and df_pequenos.empty:
     st.warning("Nenhum item encontrado com os filtros selecionados.")
     st.stop()
 
-# Inicializações para o caso de df vazio após a separação
 lotes_ordenados = []
 resumo = None
 entregas_atrasadas = 0
 
-# ==================== ENTREGAS COM CAPACIDADE, LIMITE POR ITEM E INTERVALO MÍNIMO ====================
+# ==================== ENTREGAS COM CAPACIDADE, SEMANAS E INTERVALO MÍNIMO ====================
 
 if not df.empty:
     hoje_ref = pd.Timestamp(inicio) if inicio else pd.Timestamp(date.today())
     df["Data Necessidade"] = df["Data Necessidade"].fillna(hoje_ref)
     df["Data Base"] = df["Data Necessidade"].where(df["Data Necessidade"] >= hoje_ref, hoje_ref)
-    df["Semana Demanda"] = df["Data Base"].dt.normalize() - pd.to_timedelta(
-        df["Data Base"].dt.weekday, unit="D"
-    )
+    df["Semana Demanda"] = df["Data Base"].dt.normalize() - pd.to_timedelta(df["Data Base"].dt.weekday, unit="D")
     df["_is_cameba"] = df["Segmento"].astype(str).str.strip().str.upper() == "CAMEBA"
 
     capacidade_entrega = float(capacidade_entrega)
     capacidade_cameba = capacidade_entrega * (float(pct_cameba) / 100.0)
     intervalo = pd.Timedelta(weeks=int(intervalo_semanas))
-
-    MAX_POR_ITEM = 700
-    MIN_POR_ITEM = int(qtd_min_item_pf) if qtd_min_item_pf else 100
+    N_SEMANAS = max(1, int(semanas_distribuir))
 
     def dividir_item_em_chunks(grupo):
         grupo = grupo.sort_values("Data Necessidade").reset_index(drop=True)
         total = float(grupo["Necessidade"].sum())
-        if total < MIN_POR_ITEM:
+        if total < (qtd_min_item_pf or 100):
             return None
-        if total <= MAX_POR_ITEM:
-            return [grupo.copy()]
-        num_chunks = -(-int(total) // MAX_POR_ITEM)
-        target = total / num_chunks
-        chunks = [[] for _ in range(num_chunks)]
-        chunk_qty = [0.0] * num_chunks
-        ci = 0
-        for _, row in grupo.iterrows():
-            q = float(row["Necessidade"])
-            if ci < num_chunks - 1 and chunk_qty[ci] >= target and chunk_qty[ci] + q > target:
-                ci += 1
-            chunks[ci].append(row)
-            chunk_qty[ci] += q
-        if num_chunks > 1 and chunk_qty[-1] < MIN_POR_ITEM and len(chunks) > 1:
-            chunks[-2].extend(chunks[-1])
-            chunk_qty[-2] += chunk_qty[-1]
-            chunks.pop()
-            chunk_qty.pop()
-            num_chunks -= 1
-        return [pd.DataFrame(c) for c in chunks if c]
+        num_chunks = min(N_SEMANAS, max(1, int(total)))
+        if num_chunks < 1:
+            num_chunks = 1
+        base = int(total) // num_chunks
+        resto = int(total) % num_chunks
+        sizes = [base + (1 if i < resto else 0) for i in range(num_chunks)]
+        res = []
+        for ci in range(num_chunks):
+            if ci == 0:
+                res.append((float(sizes[ci]), grupo.copy()))
+            else:
+                res.append((float(sizes[ci]), pd.DataFrame(columns=grupo.columns)))
+        return res
 
     itens_pequenos = []
     chunks = []
     for cod, grupo in df.groupby("Cód Confec"):
         total = float(grupo["Necessidade"].sum())
-        if total < MIN_POR_ITEM:
+        if total < (qtd_min_item_pf or 100):
             itens_pequenos.append((cod, grupo.copy(), total))
             continue
         res = dividir_item_em_chunks(grupo)
@@ -455,17 +343,8 @@ if not df.empty:
             continue
         total_chunks = len(res)
         semana = grupo["Semana Demanda"].iloc[0]
-        for ci, chunk_df in enumerate(res, 1):
-            chunks.append({
-                "cod": cod,
-                "produto": str(grupo["Produto"].iloc[0]),
-                "is_cameba": bool(grupo["CAMEBA"].iloc[0]) if "CAMEBA" in grupo.columns else False,
-                "qty": float(chunk_df["Necessidade"].sum()),
-                "chunk_idx": ci,
-                "total_chunks": total_chunks,
-                "orders": chunk_df,
-                "week": semana,
-            })
+        for ci, (qty, orders) in enumerate(res, 1):
+            chunks.append({"cod": cod, "produto": str(grupo["Produto"].iloc[0]), "is_cameba": bool(grupo["CAMEBA"].iloc[0]) if "CAMEBA" in grupo.columns else False, "qty": float(qty), "chunk_idx": ci, "total_chunks": total_chunks, "orders": orders, "week": semana})
 
     # Empacotamento por semana
     entregas = []
@@ -477,9 +356,7 @@ if not df.empty:
             for entrega in entregas:
                 if entrega["week"] != semana:
                     continue
-                if (entrega["total"] + chunk["qty"] <= capacidade_entrega and
-                        (not chunk["is_cameba"] or
-                         entrega["cameba"] + chunk["qty"] <= capacidade_cameba)):
+                if (entrega["total"] + chunk["qty"] <= capacidade_entrega and (not chunk["is_cameba"] or entrega["cameba"] + chunk["qty"] <= capacidade_cameba)):
                     entrega["chunks"].append(chunk)
                     entrega["total"] += chunk["qty"]
                     if chunk["is_cameba"]:
@@ -487,23 +364,17 @@ if not df.empty:
                     colocado = True
                     break
             if not colocado:
-                entregas.append({
-                    "chunks": [chunk],
-                    "week": semana,
-                    "total": chunk["qty"],
-                    "cameba": chunk["qty"] if chunk["is_cameba"] else 0.0,
-                })
+                entregas.append({"chunks": [chunk], "week": semana, "total": chunk["qty"], "cameba": chunk["qty"] if chunk["is_cameba"] else 0.0})
 
-    # Agendamento
+    # Agendamento com intervalo mínimo, sem ultrapassar a data de necessidade
     prev = None
     entregas_atrasadas = 0
     for entrega in entregas:
         candidato = pd.Timestamp(entrega["week"])
         if prev is not None and candidato < prev + intervalo:
             candidato = prev + intervalo
-        prazos = [c["orders"]["Data Necessidade"].min() for c in entrega["chunks"]]
+        prazos = [c["orders"]["Data Necessidade"].min() for c in entrega["chunks"] if not c["orders"].empty]
         prazo_raw = pd.Timestamp(min(prazos)) if prazos else pd.Timestamp(hoje_ref)
-        # Prazo nunca pode ser anterior à semana de demanda nem ao início do planejamento
         prazo = max(prazo_raw, pd.Timestamp(entrega["week"]), pd.Timestamp(hoje_ref))
         entrega["prazo"] = prazo
         if candidato > prazo:
@@ -514,69 +385,61 @@ if not df.empty:
         entrega["agendada"] = candidato
         prev = candidato
 
-    # Reconstrói df no nível de pedido
+    # Reconstrói df (nível de pedido + continuação)
     linhas_plan = []
     for chunk in chunks:
         ei = next(i for i, e in enumerate(entregas) if chunk in e["chunks"])
         entrega = entregas[ei]
-        for _, row in chunk["orders"].iterrows():
+        if chunk["orders"].empty:
             linhas_plan.append({
-                "EntregaID": ei,
-                "Chegada Material": entrega["agendada"],
-                "Entrega Atrasada": entrega["atrasada"],
-                "Chunk Qty": chunk["qty"],
-                "Chunk": f"{chunk['chunk_idx']}/{chunk['total_chunks']}",
-                "Pedido": row["Pedido"],
-                "Cód Confec": chunk["cod"],
-                "Produto": chunk["produto"],
-                "Cliente": row["Cliente"],
-                "Marca": row["Marca"],
-                "Operação": row["Operação"],
-                "Qtd": row["Qtd"],
-                "Saldo Calc.": row["Saldo Calc."],
-                "Em Trânsito": row["Em Trânsito"],
-                "Saldo": row["Saldo"],
-                "Coberto pela Produção": row["Coberto pela Produção"],
-                "Necessidade": row["Necessidade"],
-                "CAMEBA": bool(row["CAMEBA"]) if "CAMEBA" in row.index else False,
-                "Data Necessidade": row["Data Necessidade"],
-                "Origem da Data": row["Origem da Data"],
-                "Em Confecção": row["Em Confecção"],
-                "Confecções": row["Confecções"],
-                "Segmento": row["Segmento"],
-                "Saldo 5": row.get("Saldo 5") if "Saldo 5" in row.index else None,
-                "Tec Faz x Confec": row.get('Tec Faz "x" Confec') if 'Tec Faz "x" Confec' in row.index else None,
-                "Cons. Unitário": row.get("Cons. Unitário") if "Cons. Unitário" in row.index else None,
+                "EntregaID": ei, "Chegada Material": entrega["agendada"], "Entrega Atrasada": entrega["atrasada"],
+                "Chunk Qty": chunk["qty"], "Chunk": f"{chunk['chunk_idx']}/{chunk['total_chunks']}",
+                "Pedido": "(continuação)", "Cód Confec": chunk["cod"], "Produto": chunk["produto"],
+                "Cliente": "", "Marca": "", "Operação": "", "Qtd": 0, "Saldo Calc.": 0, "Em Trânsito": 0,
+                "Saldo": 0, "Coberto pela Produção": 0, "Necessidade": chunk["qty"],
+                "CAMEBA": chunk["is_cameba"], "Data Necessidade": chunk["orders"]["Data Necessidade"].min() if not chunk["orders"].empty else entrega["agendada"],
+                "Origem da Data": "", "Em Confecção": False, "Confecções": "",
+                "Segmento": "", "Saldo 5": None, "Tec Faz x Confec": None, "Cons. Unitário": None,
             })
+        else:
+            for _, row in chunk["orders"].iterrows():
+                linhas_plan.append({
+                    "EntregaID": ei, "Chegada Material": entrega["agendada"], "Entrega Atrasada": entrega["atrasada"],
+                    "Chunk Qty": chunk["qty"], "Chunk": f"{chunk['chunk_idx']}/{chunk['total_chunks']}",
+                    "Pedido": row["Pedido"], "Cód Confec": chunk["cod"], "Produto": chunk["produto"],
+                    "Cliente": row["Cliente"], "Marca": row["Marca"], "Operação": row["Operação"],
+                    "Qtd": row["Qtd"], "Saldo Calc.": row["Saldo Calc."], "Em Trânsito": row["Em Trânsito"],
+                    "Saldo": row["Saldo"], "Coberto pela Produção": row["Coberto pela Produção"],
+                    "Necessidade": row["Necessidade"], "CAMEBA": bool(row["CAMEBA"]) if "CAMEBA" in row.index else False,
+                    "Data Necessidade": row["Data Necessidade"], "Origem da Data": row["Origem da Data"],
+                    "Em Confecção": row["Em Confecção"], "Confecções": row["Confecções"],
+                    "Segmento": row["Segmento"],
+                    "Saldo 5": row.get("Saldo 5"), "Tec Faz x Confec": row.get('Tec Faz "x" Confec'), "Cons. Unitário": row.get("Cons. Unitário"),
+                })
     df = pd.DataFrame(linhas_plan)
     df["CAMEBA"] = df["CAMEBA"].astype(bool)
-    df["Lote"] = df["Chegada Material"].map(
-        {c: f"Entrega {i+1:02d} · {pd.Timestamp(c).strftime('%d/%m/%Y')}" for i, c in enumerate(sorted(df["Chegada Material"].dropna().unique()))}
-    ).fillna("Sem data")
+    df["Lote"] = df["Chegada Material"].map({c: f"Entrega {i+1:02d} · {pd.Timestamp(c).strftime('%d/%m/%Y')}" for i, c in enumerate(sorted(df["Chegada Material"].dropna().unique()))}).fillna("Sem data")
 
 # ==================== KPIs ====================
 
 st.markdown("### 📈 Visão Geral do Planejamento")
 
-st.caption(
-    f"📄 **{len(df_proj) if df_proj is not None else 0}** linhas lidas da planilha de Projeção. "
-    f"Após os filtros: **{len(df) if not df.empty else 0}** itens."
-)
+st.caption(f"📄 **{len(df_proj) if df_proj is not None else 0}** linhas lidas da planilha de Projeção. Após os filtros: **{len(df) if not df.empty else 0}** itens.")
 
 qtd_total = float(df["Qtd"].sum()) if not df.empty else 0.0
 saldo_total = float(df["Saldo"].sum()) if not df.empty else 0.0
 coberto_total = float(df["Coberto pela Produção"].sum()) if not df.empty else 0.0
-necessidade_total = float(df["Necessidade"].sum()) if not df.empty else 0.0
+necessidade_total = float(df["Chunk Qty"].sum()) if (not df.empty and "Chunk Qty" in df.columns) else (float(df["Necessidade"].sum()) if not df.empty else 0.0)
 em_conf_itens = int(df["Em Confecção"].sum()) if not df.empty else 0
 n_lotes = df["Lote"].nunique() if not df.empty else 0
 primeira = pd.Timestamp(df["Chegada Material"].min()) if not df.empty else pd.NaT
 ultima = pd.Timestamp(df["Chegada Material"].max()) if not df.empty else pd.NaT
-entregas_atrasadas = entregas_atrasadas if "entregas_atrasadas" in globals() else 0
+entregas_atrasadas = entregas_atrasadas if "entregas_atrasadas" in dir() else 0
 
 colunas_kpi = st.columns(4)
 with colunas_kpi[0]:
     with st.container(border=True):
-        st.metric("🧾 Itens", fmt_num(len(df)), help="Linhas da projeção após os filtros")
+        st.metric("🧾 Itens", fmt_num(df["Cód Confec"].nunique() if not df.empty else 0), help="Itens únicos na projeção")
 with colunas_kpi[1]:
     with st.container(border=True):
         st.metric("📦 Qtd Pedida", fmt_num(qtd_total))
@@ -589,14 +452,14 @@ with colunas_kpi[3]:
 colunas_kpi2 = st.columns(3)
 with colunas_kpi2[0]:
     with st.container(border=True):
-        st.metric("🏭 Já em Produção", fmt_num(coberto_total), help="Quantidade coberta por pedidos que já possuem confecção")
+        st.metric("🏭 Já em Produção", fmt_num(coberto_total))
 with colunas_kpi2[1]:
     with st.container(border=True):
         st.metric("📅 Entregas", fmt_num(n_lotes), help=f"Intervalo mínimo de {intervalo_semanas} semana(s)")
 with colunas_kpi2[2]:
     with st.container(border=True):
         periodo = f"{primeira.strftime('%d/%m/%y')} → {ultima.strftime('%d/%m/%y')}" if pd.notna(primeira) and pd.notna(ultima) else "—"
-        st.metric("🗓️ Horizonte", periodo, help="Primeira e última chegada planejada")
+        st.metric("🗓️ Horizonte", periodo)
 if pd.notna(primeira) and pd.notna(ultima):
     st.caption(f"🗓️ Horizonte planejado: **{primeira.strftime('%d/%m/%Y')}** → **{ultima.strftime('%d/%m/%Y')}** · {em_conf_itens} itens já possuem confecção definida.")
     if "Saldo 5" in df.columns:
@@ -620,39 +483,11 @@ if entregas_atrasadas:
 st.markdown("### 📊 Entregas Planejadas")
 
 if not df.empty:
-    resumo = (
-        df.groupby("Lote", sort=False)
-        .agg(
-            Itens=("Pedido", "count"),
-            Qtd=("Qtd", "sum"),
-            Saldo=("Saldo", "sum"),
-            Necessidade=("Necessidade", "sum"),
-            CAMEBA=("Nec CAMEBA" if "Nec CAMEBA" in df.columns else "Necessidade", "sum"),
-            Chegada=("Chegada Material", "first"),
-        )
-        .reset_index()
-        .sort_values("Chegada")
-    )
-    # fix CAMEBA aggregation
-    df["Nec CAMEBA"] = df["Necessidade"].where(df["CAMEBA"], 0.0)
-    resumo = (
-        df.groupby("Lote", sort=False)
-        .agg(
-            Itens=("Pedido", "count"),
-            Qtd=("Qtd", "sum"),
-            Saldo=("Saldo", "sum"),
-            Necessidade=("Necessidade", "sum"),
-            CAMEBA=("Nec CAMEBA", "sum"),
-            Chegada=("Chegada Material", "first"),
-        )
-        .reset_index()
-        .sort_values("Chegada")
-    )
+    resumo = pd.DataFrame([{"Lote": f"Entrega {i+1:02d} · {pd.Timestamp(e['agendada']).strftime('%d/%m/%Y')}", "Chegada": e["agendada"], "Itens": len(e["chunks"]), "Necessidade": sum(c["qty"] for c in e["chunks"]), "CAMEBA": sum(c["qty"] for c in e["chunks"] if c["is_cameba"]), "Atrasada": e["atrasada"]} for i, e in enumerate(entregas)]).sort_values("Chegada")
 
     with st.container(border=True):
         figura = go.Figure()
         figura.add_bar(x=resumo["Lote"], y=resumo["Necessidade"], name="Necessidade líquida", marker_color="#6366f1")
-        figura.add_bar(x=resumo["Lote"], y=resumo["Saldo"], name="Saldo em aberto", marker_color="#8b5cf6")
         figura.update_layout(template=template_plotly(), barmode="group", height=400, title="Necessidade por entrega", xaxis_title="", yaxis_title="Unidades", legend=dict(orientation="h", y=1.12), margin=dict(t=70, l=10, r=10, b=10))
         st.plotly_chart(figura, width="stretch")
 
@@ -682,7 +517,7 @@ if not df.empty:
 
     st.markdown("### 🗓️ Planejamento por Lote")
     with st.container(border=True):
-        st.dataframe(resumo.rename(columns={"Lote": "Lote", "Chegada": "Chegada do material", "Itens": "Itens", "Qtd": "Qtd pedida", "Saldo": "Saldo em aberto", "Necessidade": "Necessidade líquida", "CAMEBA": "CAMEBA (un.)"}).assign(**{"Chegada do material": lambda d: d["Chegada do material"].map(fmt_data)}), width="stretch", hide_index=True)
+        st.dataframe(resumo.rename(columns={"Lote": "Lote", "Chegada": "Chegada do material", "Itens": "Itens", "Necessidade": "Necessidade líquida", "CAMEBA": "CAMEBA (un.)"}).assign(**{"Chegada do material": lambda d: d["Chegada do material"].map(fmt_data)}), width="stretch", hide_index=True)
 
 # ==================== DETALHAMENTO POR ENTREGA ====================
 
@@ -700,7 +535,7 @@ if not df.empty:
             bloco = detalhe[detalhe["Lote"] == lote].copy()
             chegada = bloco["Chegada Material"].iloc[0]
             n_itens = bloco["Cód Confec"].nunique()
-            total_un = float(bloco["Necessidade"].sum())
+            total_un = float(bloco["Chunk Qty"].sum()) if "Chunk Qty" in bloco.columns else float(bloco["Necessidade"].sum())
             atrasada = bool(bloco["Entrega Atrasada"].iloc[0]) if "Entrega Atrasada" in bloco.columns else False
             titulo = f"{lote}  ·  {n_itens} item(ns)  ·  {fmt_num(total_un)} unidades" + ("  ⚠️ atrasada" if atrasada else "")
             with st.expander(titulo, expanded=False):
@@ -720,7 +555,10 @@ if not df.empty:
                         st.caption(f"🧵 Tecido: disponível {fmt_num(s5)} | necessário {fmt_num(tec_nec)} {status}")
                     linhas_pedido = []
                     for _, row in grupo.sort_values("Data Necessidade").iterrows():
-                        linhas_pedido.append(f"- Pedido **{row['Pedido']}** — {fmt_num(row['Necessidade'])} un — necessidade {fmt_data(row['Data Necessidade'])} ({row['Origem da Data']})")
+                        if str(row["Pedido"]) == "(continuação)":
+                            linhas_pedido.append(f"- *(continuação — {fmt_num(row['Necessidade'])} un)*")
+                        else:
+                            linhas_pedido.append(f"- Pedido **{row['Pedido']}** — {fmt_num(row['Necessidade'])} un — necessidade {fmt_data(row['Data Necessidade'])} ({row['Origem da Data']})")
                     st.markdown("\n".join(linhas_pedido))
                     st.markdown("")
 
@@ -729,21 +567,8 @@ if not df.empty:
 if not df_pequenos.empty:
     st.markdown("### 📌 Itens com Necessidade < 100 (exibidos separadamente)")
     with st.container(border=True):
-        resumo_peq = (
-            df_pequenos.groupby("Cód Confec", sort=False)
-            .agg(
-                Produto=("Produto", "first"),
-                Pedidos=("Pedido", "count"),
-                Necessidade=("Necessidade", "sum"),
-                Cliente=("Cliente", lambda s: ", ".join(sorted(set(s)))[:80]),
-            )
-            .reset_index()
-            .sort_values("Necessidade", ascending=False)
-        )
-        st.dataframe(
-            resumo_peq.rename(columns={"Cód Confec": "Cód Confec", "Necessidade": "Necessidade total"}),
-            width="stretch", hide_index=True, height=300,
-        )
+        resumo_peq = df_pequenos.groupby("Cód Confec", sort=False).agg(Produto=("Produto", "first"), Pedidos=("Pedido", "count"), Necessidade=("Necessidade", "sum")).reset_index().sort_values("Necessidade", ascending=False)
+        st.dataframe(resumo_peq.rename(columns={"Cód Confec": "Cód Confec", "Necessidade": "Necessidade total"}), width="stretch", hide_index=True, height=300)
 
 # ==================== TECIDO SUGERIDO ====================
 
@@ -769,15 +594,7 @@ if df_estoque_pf is not None:
         if calc < 0:
             tecido = (abs(calc) * 1.10) * (float(cons) if pd.notna(cons) else 0.0)
         if tecido > 0:
-            tecido_rows.append({
-                "Cód Confec": cod,
-                "Descrição": str(row.get("Descrição", "") or ""),
-                "Marca": str(row.get("Marca", "Sem Marca") or "Sem Marca"),
-                "Saldo 5": saldo5,
-                "Tec Faz x Confec": tec_faz,
-                "Cons. Unitário": cons,
-                "Tecido Sugerido (m)": round(tecido, 3),
-            })
+            tecido_rows.append({"Cód Confec": cod, "Descrição": str(row.get("Descrição", "") or ""), "Marca": str(row.get("Marca", "Sem Marca") or "Sem Marca"), "Saldo 5": saldo5, "Tec Faz x Confec": tec_faz, "Cons. Unitário": cons, "Tecido Sugerido (m)": round(tecido, 3)})
 
 tecido_pf = pd.DataFrame(tecido_rows)
 if tecido_pf.empty:
@@ -862,8 +679,8 @@ with st.expander("ℹ️ Como o planejamento é calculado", expanded=False):
 1. **Data de necessidade** de cada item: `Dt. Agendamento` → se vazia, `Dt Entrega` → se vazia, `Dt Pedido`, antecipada 5 dias.
 2. O **saldo em aberto** é calculado por `((Qtd* - Saldo Calc.) - Em Trânsito)`.
 3. A **necessidade líquida** desconta, por código, o saldo dos pedidos que já possuem confecção.
-4. Itens com necessidade total < **{MIN_POR_ITEM}** são exibidos separadamente (não entram nas entregas).
-5. Cada item é dividido em partes de no máximo **{MAX_POR_ITEM}** unidades por entrega.
+4. Itens com necessidade total < **{qtd_min_item_pf or 100}** são exibidos separadamente.
+5. Cada item é distribuído em **{semanas_distribuir}** semanas (quantidade por parte = total ÷ {semanas_distribuir}).
 6. Cada **entrega** respeita **{int(capacidade_entrega):,} unidades** no total e no máximo **{int(capacidade_cameba):,} unidades** ({int(pct_cameba)}%) para CAMEBA.
 7. As entregas são agendadas para **não ultrapassar a data de necessidade** e espaçadas pelo intervalo mínimo.
 """)
