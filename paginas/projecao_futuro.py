@@ -40,8 +40,6 @@ aplicar_estilo_comum()
 
 df_pedidos_raw, df_estoque_raw = sidebar_arquivos()
 
-# ==================== UPLOAD DA PROJEÇÃO ====================
-
 CHAVES_PROJ = ("projecao_bytes", "projecao_nome", "projecao_sig")
 
 with st.sidebar:
@@ -54,7 +52,7 @@ with st.sidebar:
             f'<span class="db-file-name">{nome_proj}</span></div>',
             unsafe_allow_html=True,
         )
-        if st.button("🔄 Trocar projeção", key="btn_trocar_proj_pf2"):
+        if st.button("🔄 Trocar projeção", key="btn_trocar_proj_pf3"):
             for chave in CHAVES_PROJ:
                 st.session_state.pop(chave, None)
             st.rerun()
@@ -62,7 +60,7 @@ with st.sidebar:
         upload = st.file_uploader(
             "Arquivo **Projeção** (.xlsx)",
             type=["xlsx", "xls"],
-            key="upload_projecao_pf2",
+            key="upload_projecao_pf3",
             help="Planilha com a demanda futura.",
         )
         if upload is not None:
@@ -150,7 +148,6 @@ proj["Dt Pedido"] = coluna_data(bruto, "Dt Pedido", "Dt. Pedido")
 proj["Data Necessidade"] = (proj["Dt Agendamento"].fillna(proj["Dt Entrega"]).fillna(proj["Dt Pedido"])) - pd.Timedelta(days=5)
 proj["Origem da Data"] = np.select([proj["Dt Agendamento"].notna(), proj["Dt Entrega"].notna()], ["Agendamento", "Entrega"], default="Pedido")
 
-# Cruzamento com Estoque (tecido)
 estoque_lookup = {}
 if df_estoque_raw is not None:
     est_prep = preparar_estoque(df_estoque_raw)
@@ -162,7 +159,6 @@ proj["Saldo 5"] = proj["Cód Confec"].map(lambda c: estoque_lookup.get(c, {}).ge
 proj["Tec Faz x Confec"] = proj["Cód Confec"].map(lambda c: estoque_lookup.get(c, {}).get("Tec Faz x Confec"))
 proj["Cons. Unitário"] = proj["Cód Confec"].map(lambda c: estoque_lookup.get(c, {}).get("Cons. Unitário"))
 
-# Remove total row
 proj = proj[(proj["Pedido"].str.strip() != "") & (proj["Cód Confec"].str.strip() != "")]
 proj = proj.reset_index(drop=True)
 df_proj = proj
@@ -213,7 +209,7 @@ with st.sidebar:
     somente_com_data = st.checkbox("Desconsiderar pedidos sem data de agendamento ou entrega", value=True, key="pf_com_data")
     desconsiderar_atrasados = st.checkbox("Desconsiderar atrasados", value=False, key="pf_desc_atrasados")
     qtd_min_item_pf = st.number_input("Quantidade mínima por item (un.)", min_value=0, max_value=100000, value=100, step=10, key="pf_qtd_min", help="Itens com necessidade total (somada por Cód Confec) abaixo desse valor são exibidos separadamente.")
-    semanas_distribuir = st.number_input("Semanas para distribuir a demanda", min_value=1, max_value=52, value=4, step=1, key="pf_semanas_dist", help="A demanda de cada item é dividida igualmente por esse número de semanas.")
+    semanas_distribuir = st.number_input("Semanas para distribuir a demanda", min_value=1, max_value=52, value=4, step=1, key="pf_semanas_dist", help="A demanda de cada item é dividida igualmente por esse número de semanas. Cada semana vira uma entrega.")
     descontar_producao = st.checkbox("Descontar produção já em confecção", value=True, key="pf_desc_prod")
     desconsiderar_sem_tecido = st.checkbox("Desconsiderar itens sem tecido disponível", value=False, key="pf_desc_tecido")
     intervalo_semanas = st.number_input("Intervalo mínimo entre chegadas (semanas)", min_value=1, max_value=8, value=1, step=1, key="pf_intervalo")
@@ -282,10 +278,11 @@ if df.empty:
     st.info("Toda a demanda filtrada já está coberta por pedidos em produção.")
     st.stop()
 
-# ==================== SEPARA ITENS PEQUENOS (< 100) ====================
+# ==================== SEPARA ITENS PEQUENOS (< min) ====================
 
 totais_por_item = df.groupby("Cód Confec")["Necessidade"].sum()
-itens_pequenos_cod = set(totais_por_item[totais_por_item < float(qtd_min_item_pf)].index)
+limite_min = qtd_min_item_pf if qtd_min_item_pf else 100
+itens_pequenos_cod = set(totais_por_item[totais_por_item < float(limite_min)].index)
 df_pequenos = df[df["Cód Confec"].isin(itens_pequenos_cod)].copy()
 df = df[~df["Cód Confec"].isin(itens_pequenos_cod)].copy()
 
@@ -297,7 +294,7 @@ lotes_ordenados = []
 resumo = None
 entregas_atrasadas = 0
 
-# ==================== ENTREGAS COM CAPACIDADE, SEMANAS E INTERVALO MÍNIMO ====================
+# ==================== PLANEJAMENTO POR SEMANAS ====================
 
 if not df.empty:
     hoje_ref = pd.Timestamp(inicio) if inicio else pd.Timestamp(date.today())
@@ -311,42 +308,32 @@ if not df.empty:
     intervalo = pd.Timedelta(weeks=int(intervalo_semanas))
     N_SEMANAS = max(1, int(semanas_distribuir))
 
-    def dividir_item_em_chunks(grupo):
-        grupo = grupo.sort_values("Data Necessidade").reset_index(drop=True)
+    # Cada item é dividido em N_SEMANAS partes iguais
+    chunks = []
+    for cod, grupo in df.groupby("Cód Confec"):
         total = float(grupo["Necessidade"].sum())
-        if total < (qtd_min_item_pf or 100):
-            return None
         num_chunks = min(N_SEMANAS, max(1, int(total)))
         if num_chunks < 1:
             num_chunks = 1
         base = int(total) // num_chunks
         resto = int(total) % num_chunks
         sizes = [base + (1 if i < resto else 0) for i in range(num_chunks)]
-        res = []
-        for ci in range(num_chunks):
-            if ci == 0:
-                res.append((float(sizes[ci]), grupo.copy()))
-            else:
-                res.append((float(sizes[ci]), pd.DataFrame(columns=grupo.columns)))
-        return res
-
-    itens_pequenos = []
-    chunks = []
-    for cod, grupo in df.groupby("Cód Confec"):
-        total = float(grupo["Necessidade"].sum())
-        if total < (qtd_min_item_pf or 100):
-            itens_pequenos.append((cod, grupo.copy(), total))
-            continue
-        res = dividir_item_em_chunks(grupo)
-        if res is None:
-            itens_pequenos.append((cod, grupo.copy(), total))
-            continue
-        total_chunks = len(res)
         semana = grupo["Semana Demanda"].iloc[0]
-        for ci, (qty, orders) in enumerate(res, 1):
-            chunks.append({"cod": cod, "produto": str(grupo["Produto"].iloc[0]), "is_cameba": bool(grupo["CAMEBA"].iloc[0]) if "CAMEBA" in grupo.columns else False, "qty": float(qty), "chunk_idx": ci, "total_chunks": total_chunks, "orders": orders, "week": semana})
+        for ci in range(num_chunks):
+            # Pedidos apenas no primeiro chunk (referência); demais são continuação
+            orders = grupo.copy() if ci == 0 else pd.DataFrame(columns=grupo.columns)
+            chunks.append({
+                "cod": cod,
+                "produto": str(grupo["Produto"].iloc[0]),
+                "is_cameba": bool(grupo["CAMEBA"].iloc[0]) if "CAMEBA" in grupo.columns else False,
+                "qty": float(sizes[ci]),
+                "chunk_idx": ci + 1,
+                "total_chunks": num_chunks,
+                "orders": orders,
+                "week": semana,
+            })
 
-    # Empacotamento por semana
+    # Empacotamento por semana: respeita capacidade total e limite CAMEBA
     entregas = []
     for semana in sorted(df["Semana Demanda"].dropna().unique()):
         chunks_semana = [c for c in chunks if c["week"] == semana]
@@ -356,7 +343,8 @@ if not df.empty:
             for entrega in entregas:
                 if entrega["week"] != semana:
                     continue
-                if (entrega["total"] + chunk["qty"] <= capacidade_entrega and (not chunk["is_cameba"] or entrega["cameba"] + chunk["qty"] <= capacidade_cameba)):
+                if (entrega["total"] + chunk["qty"] <= capacidade_entrega and
+                        (not chunk["is_cameba"] or entrega["cameba"] + chunk["qty"] <= capacidade_cameba)):
                     entrega["chunks"].append(chunk)
                     entrega["total"] += chunk["qty"]
                     if chunk["is_cameba"]:
@@ -364,7 +352,8 @@ if not df.empty:
                     colocado = True
                     break
             if not colocado:
-                entregas.append({"chunks": [chunk], "week": semana, "total": chunk["qty"], "cameba": chunk["qty"] if chunk["is_cameba"] else 0.0})
+                entregas.append({"chunks": [chunk], "week": semana, "total": chunk["qty"],
+                                 "cameba": chunk["qty"] if chunk["is_cameba"] else 0.0})
 
     # Agendamento com intervalo mínimo, sem ultrapassar a data de necessidade
     prev = None
@@ -397,7 +386,7 @@ if not df.empty:
                 "Pedido": "(continuação)", "Cód Confec": chunk["cod"], "Produto": chunk["produto"],
                 "Cliente": "", "Marca": "", "Operação": "", "Qtd": 0, "Saldo Calc.": 0, "Em Trânsito": 0,
                 "Saldo": 0, "Coberto pela Produção": 0, "Necessidade": chunk["qty"],
-                "CAMEBA": chunk["is_cameba"], "Data Necessidade": chunk["orders"]["Data Necessidade"].min() if not chunk["orders"].empty else entrega["agendada"],
+                "CAMEBA": chunk["is_cameba"], "Data Necessidade": entrega["agendada"],
                 "Origem da Data": "", "Em Confecção": False, "Confecções": "",
                 "Segmento": "", "Saldo 5": None, "Tec Faz x Confec": None, "Cons. Unitário": None,
             })
@@ -562,7 +551,7 @@ if not df.empty:
                     st.markdown("\n".join(linhas_pedido))
                     st.markdown("")
 
-# ==================== ITENS PEQUENOS (< 100) ====================
+# ==================== ITENS PEQUENOS (< min) ====================
 
 if not df_pequenos.empty:
     st.markdown("### 📌 Itens com Necessidade < 100 (exibidos separadamente)")
