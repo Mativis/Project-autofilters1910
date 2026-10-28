@@ -1393,19 +1393,11 @@ def pagina_kanban():
         )
 
 
-# ==================== ENVIAR KANBAN PARA VISUALIZAÇÃO ====================
+    # ==================== ENVIAR KANBAN PARA O VISUAL KANBAN ====================
+    st.markdown("---")
+    try:
+        from integracao_kanban_visual import render_enviar_kanban
 
-st.markdown("---")
-st.markdown("### 📤 Enviar Kanban para Visualização")
-
-try:
-    import sys, os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "visual_kanban"))
-    from streamlit_integration.enviar_kanban import botao_enviar_kanban
-    # df_kanban deve estar disponível no escopo; caso contrário, avisa
-    if "df_kanban" in globals():
-        botao_enviar_kanban(df_kanban)
-    else:
-        st.info("Gere o Kanban primeiro para habilitar o envio.")
-except Exception as e:
-    st.info(f"Módulo de envio não disponível: {e}")
+        render_enviar_kanban(df_kanban, key_prefix="kb")
+    except Exception as erro_envio:  # nunca derruba a página do Kanban
+        st.info(f"Módulo de envio indisponível: {erro_envio}")
