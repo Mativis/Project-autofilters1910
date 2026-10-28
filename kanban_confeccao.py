@@ -1391,3 +1391,21 @@ def pagina_kanban():
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             width="stretch",
         )
+
+
+# ==================== ENVIAR KANBAN PARA VISUALIZAÇÃO ====================
+
+st.markdown("---")
+st.markdown("### 📤 Enviar Kanban para Visualização")
+
+try:
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "visual_kanban"))
+    from streamlit_integration.enviar_kanban import botao_enviar_kanban
+    # df_kanban deve estar disponível no escopo; caso contrário, avisa
+    if "df_kanban" in globals():
+        botao_enviar_kanban(df_kanban)
+    else:
+        st.info("Gere o Kanban primeiro para habilitar o envio.")
+except Exception as e:
+    st.info(f"Módulo de envio não disponível: {e}")
