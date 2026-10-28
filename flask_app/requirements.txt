@@ -1,0 +1,9 @@
+flask==3.0.3
+pandas==2.2.2
+numpy==1.26.4
+openpyxl==3.1.5
+xlsxwriter==3.2.0
+plotly==5.22.0
+werkzeug==3.0.3
+gunicorn==22.0.0
+python-dotenv==1.0.1
