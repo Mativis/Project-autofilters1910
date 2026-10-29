@@ -460,6 +460,10 @@ def pagina_kanban():
         for saldo2, saldo in zip(df_base["Saldo 2"], df_base["Saldo"])
     ]
 
+    # O envio "Todo o quadro" usa esta cópia, feita antes do filtro de Saldo ≤ 4%,
+    # para levar todos os pedidos e também a Q.E calculada com o fator atual.
+    df_completo = df_base.copy()
+
     if desconsiderar_saldo_baixo:
         mask_saldo_baixo = (df_base["Qtd"] > 0) & (df_base["Saldo"] <= df_base["Qtd"] * 0.04)
         linhas_descartadas = int(mask_saldo_baixo.sum())
@@ -1398,6 +1402,6 @@ def pagina_kanban():
     try:
         from integracao_kanban_visual import render_enviar_kanban
 
-        render_enviar_kanban(df_kanban, key_prefix="kb", df_filtrado=df_filtrado)
+        render_enviar_kanban(df_completo, key_prefix="kb", df_filtrado=df_filtrado)
     except Exception as erro_envio:  # nunca derruba a página do Kanban
         st.info(f"Módulo de envio indisponível: {erro_envio}")
