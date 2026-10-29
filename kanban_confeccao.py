@@ -1398,6 +1398,6 @@ def pagina_kanban():
     try:
         from integracao_kanban_visual import render_enviar_kanban
 
-        render_enviar_kanban(df_kanban, key_prefix="kb")
+        render_enviar_kanban(df_kanban, key_prefix="kb", df_filtrado=df_filtrado)
     except Exception as erro_envio:  # nunca derruba a página do Kanban
         st.info(f"Módulo de envio indisponível: {erro_envio}")
