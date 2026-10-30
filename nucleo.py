@@ -713,3 +713,77 @@ def calcular_qe(saldo2, saldo_pedido, fator=FATOR_URGENCIA_PADRAO):
     bruto = math.ceil(abs(float(saldo2)) * float(fator))
     teto = int(max(0, float(saldo_pedido)))
     return int(max(0, min(bruto, teto)))
+
+
+def distribuir_qe(df, mapa_saldo2, fator=FATOR_URGENCIA_PADRAO):
+    """Calcula a Q.E uma única vez por código e a distribui entre os pedidos.
+
+    O ``Saldo 2`` pertence ao item (``Cód Confec``), não a cada pedido. Repetir
+    ``|Saldo 2| × fator`` em todos os pedidos do mesmo código multiplicaria a
+    quantidade emergencial. Aqui o total do código é calculado uma única vez e
+    distribuído aos pedidos mais urgentes (prioridade, data de entrega e
+    pedido), sem ultrapassar o ``Saldo`` em aberto de cada um.
+    """
+    if df is None:
+        return df
+
+    resultado = df.copy()
+    resultado["Q.E"] = 0
+
+    if resultado.empty or "Cód Confec" not in resultado.columns:
+        return resultado
+
+    saldo = pd.to_numeric(resultado.get("Saldo"), errors="coerce").fillna(0).clip(lower=0)
+    if "Prioridade" in resultado.columns:
+        prioridade = (
+            resultado["Prioridade"]
+            .map(ORDEM_PRIORIDADE)
+            .fillna(len(ORDEM_PRIORIDADE))
+            .astype(float)
+        )
+    else:
+        prioridade = pd.Series(0.0, index=resultado.index)
+
+    if "Dt Entrega" in resultado.columns:
+        entrega = pd.to_datetime(resultado["Dt Entrega"], errors="coerce")
+    else:
+        entrega = pd.Series(pd.NaT, index=resultado.index)
+
+    if "Compra" in resultado.columns:
+        pedido = resultado["Compra"].astype("string").fillna("")
+    else:
+        pedido = pd.Series("", index=resultado.index, dtype="string")
+
+    auxiliar = pd.DataFrame(
+        {
+            "_saldo": saldo,
+            "_prioridade": prioridade,
+            "_entrega": entrega,
+            "_pedido": pedido,
+        },
+        index=resultado.index,
+    ).sort_values(
+        ["_prioridade", "_entrega", "_pedido"],
+        kind="stable",
+        na_position="last",
+    )
+
+    codigos = resultado["Cód Confec"].map(normalizar_cod)
+    for codigo, grupo in auxiliar.groupby(codigos, sort=False):
+        total = calcular_qe(mapa_saldo2.get(codigo), grupo["_saldo"].sum(), fator)
+        restante = int(total)
+        if restante <= 0:
+            continue
+
+        # Distribui primeiro nos pedidos mais urgentes; cada pedido recebe no
+        # máximo o seu Saldo em aberto.
+        for indice, capacidade in zip(grupo.index, grupo["_saldo"]):
+            if restante <= 0:
+                break
+            quantidade = int(min(restante, math.floor(float(capacidade or 0))))
+            if quantidade <= 0:
+                continue
+            resultado.at[indice, "Q.E"] = quantidade
+            restante -= quantidade
+
+    return resultado

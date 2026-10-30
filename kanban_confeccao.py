@@ -24,9 +24,9 @@ from nucleo import (
     FATOR_URGENCIA_PADRAO,
     ORDEM_PRIORIDADE,
     calcular_prioridade,
-    calcular_qe,
     classe_prioridade,
     codigos_saldo2_negativo,
+    distribuir_qe,
     fmt_compra,
     fmt_data,
     fmt_num,
@@ -361,6 +361,8 @@ def pagina_kanban():
 
                 ### Quantidade Emergencial (Q.E):
                 - `Q.E = |Saldo 2| × fator` (fator ajustável na barra lateral, padrão **1,10**), arredondada para cima.
+                - A Q.E é calculada **uma única vez por código** e distribuída entre os pedidos mais urgentes
+                  (prioridade e data de entrega), sem repetir o valor cheio em cada pedido.
                 - A Q.E **nunca ultrapassa a Quantidade em aberto do pedido** (coluna `Saldo`).
             """)
         st.stop()
@@ -443,8 +445,9 @@ def pagina_kanban():
             step=0.05,
             format="%.2f",
             help=(
-                "Quantidade Emergencial = |Saldo 2| × fator, limitada pela Quantidade "
-                "em aberto do pedido."
+                "Quantidade Emergencial = |Saldo 2| × fator, calculada uma vez por "
+                "código e distribuída entre os pedidos mais urgentes, sem "
+                "ultrapassar o Saldo em aberto de cada pedido."
             ),
         )
 
@@ -453,21 +456,22 @@ def pagina_kanban():
     df_base = df_kanban.copy()
     linhas_descartadas = 0
 
-    # Quantidade Emergencial: |Saldo 2| x fator, limitada pela Quantidade do pedido
-    df_base["Saldo 2"] = df_base["Cód Confec"].map(mapa_saldo2)
-    df_base["Q.E"] = [
-        calcular_qe(saldo2, saldo, fator_urgencia)
-        for saldo2, saldo in zip(df_base["Saldo 2"], df_base["Saldo"])
-    ]
-
-    # O envio "Todo o quadro" usa esta cópia, feita antes do filtro de Saldo ≤ 4%,
-    # para levar todos os pedidos e também a Q.E calculada com o fator atual.
-    df_completo = df_base.copy()
-
     if desconsiderar_saldo_baixo:
         mask_saldo_baixo = (df_base["Qtd"] > 0) & (df_base["Saldo"] <= df_base["Qtd"] * 0.04)
         linhas_descartadas = int(mask_saldo_baixo.sum())
         df_base = df_base[~mask_saldo_baixo].copy()
+
+    # A Q.E é do item (Saldo 2), não do pedido: o total do código é distribuído
+    # entre os pedidos mais urgentes para não multiplicar a quantidade.
+    df_base["Saldo 2"] = df_base["Cód Confec"].map(mapa_saldo2)
+    df_base = distribuir_qe(df_base, mapa_saldo2, fator_urgencia)
+
+    # O envio "Todo o quadro" leva todos os pedidos (inclusive os descartados
+    # pelo filtro de Saldo ≤ 4%), com a mesma Q.E exibida no quadro.
+    df_completo = df_kanban.copy()
+    df_completo["Q.E"] = 0
+    if not df_base.empty:
+        df_completo.loc[df_base.index, "Q.E"] = df_base["Q.E"]
 
     df_filtrado = df_base[df_base["Confecção"].isin(confeccoes_sel)].copy()
     df_filtrado = df_filtrado[df_filtrado["Prioridade"].isin(prioridades_sel)]
@@ -509,7 +513,7 @@ def pagina_kanban():
     st.markdown(
         f"<div class='kb-info-box'>📦 Quantidade total (Saldo): <b>{fmt_num(df_filtrado['Saldo'].sum())}</b> unidade(s) &nbsp;|&nbsp; "
         f"🚨 Quantidade Emergencial: <b>{fmt_num(df_filtrado['Q.E'].sum())}</b> unidade(s) "
-        f"(|Saldo 2| × {fator_urgencia:.2f}, limitada pela quantidade do pedido) &nbsp;|&nbsp; "
+        f"(|Saldo 2| × {fator_urgencia:.2f}, distribuída por prioridade e limitada ao Saldo de cada pedido) &nbsp;|&nbsp; "
         f"🔍 <b>{len(codigos_saldo2_neg)}</b> código(s) com Saldo 2 negativo no Estoque &nbsp;|&nbsp; "
         f"📅 Data de referência: <b>{date.today().strftime('%d/%m/%Y')}</b></div>",
         unsafe_allow_html=True,
