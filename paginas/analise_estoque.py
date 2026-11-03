@@ -93,8 +93,9 @@ with st.sidebar:
         default=tamanhos_opcoes,
         help=(
             "Tamanho inferido da Descrição do item (ex.: 'CAMISETA BASIC P', "
-            "'TAM: M', 'CALÇA JEANS 42'). Itens sem tamanho reconhecido ficam "
-            "em 'Sem tamanho'."
+            "'TAM: M', 'CALÇA JEANS 42', 'CORTINA 2,40X1,70'). Também reconhece "
+            "faixas como 'De 1,40X1,90 até 1,60X2,00'. Itens sem tamanho "
+            "reconhecido ficam em 'Sem tamanho'."
         ),
     )
     top_n = st.slider("Top N nos gráficos", min_value=5, max_value=40, value=20, step=1)

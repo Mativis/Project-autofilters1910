@@ -178,6 +178,27 @@ _RE_FRACAO = re.compile(r"\b\d{1,3}\s*/\s*\d{1,3}\b")
 _RE_DECIMAL = re.compile(r"\b\d+[.,]\d+\b")
 _RE_TOKEN = re.compile(r"[A-Z0-9]+")
 
+# Medidas de produto (ex.: cortina "2,40X1,70"). Aceita vírgula ou ponto e
+# também faixas do tipo "De 1,40X1,90 até 1,60X2,00".
+_NUMERO_MEDIDA = r"\d{1,3}[.,]\d{1,3}"
+_RE_MEDIDA = re.compile(
+    r"\b(?P<medida>" + _NUMERO_MEDIDA + r"\s*[Xx×]\s*" + _NUMERO_MEDIDA + r")\b"
+)
+_RE_FAIXA_MEDIDA = re.compile(
+    r"\b(?:(?:DE)\s*[:\-]?\s*)?(?P<inicio>"
+    + _NUMERO_MEDIDA
+    + r"\s*[Xx×]\s*"
+    + _NUMERO_MEDIDA
+    + r")\s+(?:ATE|A)\s*[:\-]?\s*(?P<fim>"
+    + _NUMERO_MEDIDA
+    + r"\s*[Xx×]\s*"
+    + _NUMERO_MEDIDA
+    + r")\b"
+)
+_RE_MEDIDA_BUSCA = re.compile(
+    r"(" + _NUMERO_MEDIDA + r")\s*[Xx×]\s*(" + _NUMERO_MEDIDA + r")"
+)
+
 _ORDEM_TAMANHOS = {
     "RN": 0,
     "PP": 1,
@@ -229,20 +250,52 @@ def _canonico_tamanho(valor):
     return _TAMANHOS_CANONICOS.get(valor, valor)
 
 
+def _formatar_medida(medida):
+    """Normaliza uma medida para o padrão '2,40 x 1,70'."""
+    achado = _RE_MEDIDA_BUSCA.search(str(medida))
+    if not achado:
+        return str(medida).strip()
+    largura = float(achado.group(1).replace(",", "."))
+    altura = float(achado.group(2).replace(",", "."))
+    return f"{largura:.2f} x {altura:.2f}".replace(".", ",")
+
+
+def _chave_medida(tamanho):
+    """Devolve (largura, altura) quando o rótulo é uma medida."""
+    achado = _RE_MEDIDA_BUSCA.search(str(tamanho))
+    if not achado:
+        return None
+    largura = float(achado.group(1).replace(",", "."))
+    altura = float(achado.group(2).replace(",", "."))
+    return largura, altura
+
+
 def extrair_tamanho(descricao):
     """Infere o tamanho a partir da descrição do item.
 
     Ordem de prioridade:
 
-    1. marcador explícito: ``TAM M``, ``TAMANHO: G``, ``T: 42``;
-    2. grade com barras: ``P/M/G``;
-    3. último token de tamanho (letras ou numeração) da descrição.
+    1. faixa de medidas: ``De 2,40X1,70 até 2,60X2,30``;
+    2. medida única: ``2,40X1,70`` (cortinas, jogos de cama etc.);
+    3. marcador explícito: ``TAM M``, ``TAMANHO: G``, ``T: 42``;
+    4. grade com barras: ``P/M/G``;
+    5. último token de tamanho (letras ou numeração) da descrição.
 
     Quando nada é reconhecido, devolve ``"Sem tamanho"``.
     """
     texto = _normalizar_descricao(descricao)
     if not texto:
         return "Sem tamanho"
+
+    faixa = _RE_FAIXA_MEDIDA.search(texto)
+    if faixa:
+        inicio = _formatar_medida(faixa.group("inicio"))
+        fim = _formatar_medida(faixa.group("fim"))
+        return f"De {inicio} até {fim}"
+
+    medida = _RE_MEDIDA.search(texto)
+    if medida:
+        return _formatar_medida(medida.group("medida"))
 
     for achado in _RE_TAMANHO_EXPLICITO.finditer(texto):
         valor = achado.group("tamanho")
@@ -290,6 +343,9 @@ def chave_ordenacao_tamanho(valor):
         return (4, 0, 0, tamanho)
     if tamanho == "Único":
         return (2, 0, 0, tamanho)
+    medida = _chave_medida(tamanho)
+    if medida is not None:
+        return (1, medida[0], medida[1], tamanho)
     if "/" in tamanho:
         primeira = tamanho.split("/")[0]
         return (2, _ORDEM_TAMANHOS.get(primeira, 50), 0, tamanho)
