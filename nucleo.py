@@ -15,6 +15,8 @@ páginas).
 import html
 import io
 import math
+import re
+import unicodedata
 from datetime import date
 
 import numpy as np
@@ -133,6 +135,178 @@ def para_texto(serie):
         return serie.astype("string").fillna("").astype(str)
     except Exception:
         return serie.map(lambda v: "" if pd.isna(v) else str(v))
+
+
+# ==================== TAMANHO A PARTIR DA DESCRIÇÃO ====================
+
+# Tamanhos em letras/números mais usados em confecção. A extração procura
+# primeiro um marcador explícito ("TAM M", "TAMANHO: G", "T: 42"), depois
+# uma grade ("P/M/G") e, por fim, o último token de tamanho da descrição.
+_TAMANHOS_LETRA = {
+    "RN", "PP", "P", "M", "G", "GG", "GGG", "GGGG",
+    "G1", "G2", "G3", "G4",
+    "XG", "XXG", "XXXG", "XGG", "XXGG", "EXG", "EXGG",
+    "EG", "EGG", "2G", "3G", "4G",
+    "U", "UN", "UNICO", "UNICA", "UNISSIZE",
+}
+
+_TAMANHOS_CANONICOS = {
+    "U": "Único",
+    "UN": "Único",
+    "UNICO": "Único",
+    "UNICA": "Único",
+    "UNISSIZE": "Único",
+    "EXG": "XG",
+    "EXGG": "XGG",
+}
+
+_TAMANHOS_RE = "|".join(sorted(_TAMANHOS_LETRA, key=len, reverse=True))
+
+_RE_TAMANHO_EXPLICITO = re.compile(
+    r"\b(?:TAM(?:ANHO)?|T)\s*[.:\-]?\s*(?P<tamanho>"
+    + _TAMANHOS_RE
+    + r"|\d{1,2})\b"
+)
+_RE_GRADE = re.compile(
+    r"\b(?P<grade>(?:"
+    + _TAMANHOS_RE
+    + r")(?:\s*/\s*(?:"
+    + _TAMANHOS_RE
+    + r"))+)\b"
+)
+_RE_FRACAO = re.compile(r"\b\d{1,3}\s*/\s*\d{1,3}\b")
+_RE_DECIMAL = re.compile(r"\b\d+[.,]\d+\b")
+_RE_TOKEN = re.compile(r"[A-Z0-9]+")
+
+_ORDEM_TAMANHOS = {
+    "RN": 0,
+    "PP": 1,
+    "P": 2,
+    "M": 3,
+    "G": 4,
+    "GG": 5,
+    "G1": 6,
+    "G2": 7,
+    "G3": 8,
+    "G4": 9,
+    "GGG": 10,
+    "GGGG": 11,
+    "XG": 12,
+    "XXG": 13,
+    "XXXG": 14,
+    "XGG": 15,
+    "XXGG": 16,
+    "EG": 17,
+    "EGG": 18,
+    "2G": 19,
+    "3G": 20,
+    "4G": 21,
+}
+
+
+def _normalizar_descricao(descricao):
+    """Maiúsculas, sem acentos e com espaços normalizados."""
+    if descricao is None or pd.isna(descricao):
+        return ""
+    texto = unicodedata.normalize("NFKD", str(descricao))
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", texto.upper()).strip()
+
+
+def _tamanho_numerico(valor):
+    """Reconhece numerações plausíveis (adulto 34–60 e infantil 1–16)."""
+    try:
+        numero = int(valor)
+    except (TypeError, ValueError):
+        return None
+    if 34 <= numero <= 60 or 1 <= numero <= 16:
+        return str(numero)
+    return None
+
+
+def _canonico_tamanho(valor):
+    valor = str(valor).strip().upper()
+    return _TAMANHOS_CANONICOS.get(valor, valor)
+
+
+def extrair_tamanho(descricao):
+    """Infere o tamanho a partir da descrição do item.
+
+    Ordem de prioridade:
+
+    1. marcador explícito: ``TAM M``, ``TAMANHO: G``, ``T: 42``;
+    2. grade com barras: ``P/M/G``;
+    3. último token de tamanho (letras ou numeração) da descrição.
+
+    Quando nada é reconhecido, devolve ``"Sem tamanho"``.
+    """
+    texto = _normalizar_descricao(descricao)
+    if not texto:
+        return "Sem tamanho"
+
+    for achado in _RE_TAMANHO_EXPLICITO.finditer(texto):
+        valor = achado.group("tamanho")
+        if valor.isdigit():
+            numero = _tamanho_numerico(valor)
+            if numero:
+                return numero
+            continue
+        return _canonico_tamanho(valor)
+
+    grade = _RE_GRADE.search(texto)
+    if grade:
+        partes = re.split(r"\s*/\s*", grade.group("grade"))
+        canonicos = []
+        for parte in partes:
+            tamanho = _canonico_tamanho(parte)
+            if tamanho not in canonicos:
+                canonicos.append(tamanho)
+        if len(canonicos) > 1:
+            return "/".join(canonicos)
+
+    # Evita confundir frações de manga ("3/4") e códigos decimais com numeração.
+    texto = _RE_DECIMAL.sub(" ", texto)
+    tokens = _RE_TOKEN.findall(_RE_FRACAO.sub(" ", texto))
+
+    for token in reversed(tokens):
+        if token in _TAMANHOS_LETRA:
+            return _canonico_tamanho(token)
+
+    # Numeração só é aceita no fim da descrição, para não capturar códigos.
+    for token in reversed(tokens[-4:]):
+        numero = _tamanho_numerico(token)
+        if numero:
+            return numero
+
+    return "Sem tamanho"
+
+
+def chave_ordenacao_tamanho(valor):
+    """Chave para exibir tamanhos na ordem da grade (P, M, G, GG...)."""
+    tamanho = "Sem tamanho" if valor is None or pd.isna(valor) else str(valor).strip()
+    if not tamanho:
+        tamanho = "Sem tamanho"
+    if tamanho == "Sem tamanho":
+        return (4, 0, 0, tamanho)
+    if tamanho == "Único":
+        return (2, 0, 0, tamanho)
+    if "/" in tamanho:
+        primeira = tamanho.split("/")[0]
+        return (2, _ORDEM_TAMANHOS.get(primeira, 50), 0, tamanho)
+    if tamanho in _ORDEM_TAMANHOS:
+        return (0, _ORDEM_TAMANHOS[tamanho], 0, tamanho)
+    if tamanho.isdigit():
+        return (1, int(tamanho), 0, tamanho)
+    return (3, 0, 0, tamanho)
+
+
+def ordenar_tamanhos(valores):
+    """Lista única de tamanhos em ordem de grade, com 'Sem tamanho' no fim."""
+    limpos = []
+    for valor in valores:
+        tamanho = "Sem tamanho" if valor is None or pd.isna(valor) else str(valor).strip()
+        limpos.append(tamanho or "Sem tamanho")
+    return sorted(set(limpos), key=chave_ordenacao_tamanho)
 
 
 # ==================== PRIORIDADE E FORMATAÇÃO ====================

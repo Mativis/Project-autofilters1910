@@ -26,8 +26,10 @@ from nucleo import (
     cabecalho,
     card,
     cores_grafico,
+    extrair_tamanho,
     fmt_num,
     fmt_pct,
+    ordenar_tamanhos,
     para_texto,
     preparar_estoque,
     preparar_pedidos,
@@ -54,6 +56,7 @@ if df_estoque is None:
     st.stop()
 
 df_estoque = preparar_estoque(df_estoque)
+df_estoque["Tamanho"] = df_estoque["Descrição"].map(extrair_tamanho)
 df_pedidos = preparar_pedidos(df_pedidos) if df_pedidos is not None else None
 
 cabecalho(
@@ -83,6 +86,17 @@ with st.sidebar:
         options=sorted(df_estoque["Coleção"].unique().tolist()),
         default=sorted(df_estoque["Coleção"].unique().tolist()),
     )
+    tamanhos_opcoes = ordenar_tamanhos(df_estoque["Tamanho"])
+    tamanhos_sel = st.multiselect(
+        "Tamanho (da descrição)",
+        options=tamanhos_opcoes,
+        default=tamanhos_opcoes,
+        help=(
+            "Tamanho inferido da Descrição do item (ex.: 'CAMISETA BASIC P', "
+            "'TAM: M', 'CALÇA JEANS 42'). Itens sem tamanho reconhecido ficam "
+            "em 'Sem tamanho'."
+        ),
+    )
     top_n = st.slider("Top N nos gráficos", min_value=5, max_value=40, value=20, step=1)
 
     somente_negativos = st.checkbox(
@@ -101,6 +115,7 @@ df = df_estoque.copy()
 df = df[df["Marca"].isin(marcas_sel)]
 df = df[df["Situação"].isin(situacoes_sel)]
 df = df[df["Coleção"].isin(colecoes_sel)]
+df = df[df["Tamanho"].isin(tamanhos_sel)]
 
 if somente_negativos:
     df = df[df["Saldo 2"] < 0]
@@ -435,6 +450,7 @@ else:
         "Marca",
         "Cód Confec",
         "Descrição",
+        "Tamanho",
         "Saldo 5",
         tec_col if tec_col in df_sug.columns else None,
         "Compra Sugerida Bruta",
@@ -452,6 +468,7 @@ else:
         "Marca": st.column_config.TextColumn("Marca", width="small"),
         "Cód Confec": st.column_config.TextColumn("Cód Confec", width="small"),
         "Descrição": st.column_config.TextColumn("Descrição", width="large"),
+        "Tamanho": st.column_config.TextColumn("Tamanho", width="small"),
         "Saldo 5": st.column_config.NumberColumn("Saldo 5 (projetado)", format="%d"),
         "Compra Sugerida Bruta": st.column_config.NumberColumn("|Saldo 5| × 1,1 (ceil)", format="%d"),
         "Compra Sugerida": st.column_config.NumberColumn("Compra Sugerida", format="%d"),
@@ -480,6 +497,7 @@ colunas_tabela = [
     "Marca",
     "Cód Confec",
     "Descrição",
+    "Tamanho",
     "Saldo 1",
     "Em Trânsito",
     "Saldo 2",
@@ -505,6 +523,7 @@ st.dataframe(
         "Marca": st.column_config.TextColumn("Marca", width="small"),
         "Cód Confec": st.column_config.TextColumn("Cód Confec", width="small"),
         "Descrição": st.column_config.TextColumn("Descrição", width="large"),
+        "Tamanho": st.column_config.TextColumn("Tamanho", width="small"),
         "Saldo 1": st.column_config.NumberColumn("Saldo 1 (físico)", format="%d"),
         "Em Trânsito": st.column_config.NumberColumn("Em Trânsito", format="%d"),
         "Saldo 2": st.column_config.NumberColumn("Saldo 2", format="%d"),
