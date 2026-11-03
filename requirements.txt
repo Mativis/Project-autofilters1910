@@ -5,3 +5,4 @@ xlsxwriter
 plotly
 numpy
 requests
+reportlab
