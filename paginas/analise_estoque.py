@@ -11,7 +11,6 @@ Cruza com a demanda em aberto dos Pedidos (Saldo) para medir cobertura
 e déficit de cada item.
 """
 
-import html
 import io
 import math
 from datetime import date
@@ -21,12 +20,6 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from nucleo import (
     aplicar_estilo_comum,
@@ -43,176 +36,16 @@ from nucleo import (
     sidebar_arquivos,
     template_plotly,
 )
-
-
-def _pdf_texto(valor):
-    """Texto seguro para o PDF: remove emojis e escapa caracteres do ReportLab."""
-    if valor is None:
-        return ""
-    try:
-        if pd.isna(valor):
-            return ""
-    except (TypeError, ValueError):
-        pass
-    texto = str(valor).strip()
-    texto = texto.encode("latin-1", "ignore").decode("latin-1").strip()
-    return html.escape(texto)
-
-
-def _pdf_numero(valor):
-    """Número no padrão brasileiro para as células do PDF."""
-    try:
-        if pd.isna(valor):
-            return "-"
-        numero = float(valor)
-    except (TypeError, ValueError):
-        return _pdf_texto(valor) or "-"
-    if numero == int(numero):
-        return f"{int(numero):,}".replace(",", ".")
-    return f"{numero:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+from pdf_compra_sugerida import (
+    gerar_pdf_compra_sugerida as _gerar_pdf_compra_sugerida,
+)
 
 
 @st.cache_data(show_spinner=False, max_entries=8)
 def gerar_pdf_compra_sugerida(df_pdf, data_referencia=None):
     """Gera a listagem de compra sugerida em PDF (A4 paisagem)."""
-    data_referencia = data_referencia or date.today().strftime("%d/%m/%Y")
-    colunas = [
-        ("Marca", "Marca", 18, "texto"),
-        ("Cód Confec", "Código", 17, "texto"),
-        ("Descrição", "Descrição", None, "texto"),
-        ("Tamanho", "Tamanho", 20, "texto"),
-        ("Saldo 5", "Saldo 5", 14, "numero"),
-        ('Tec Faz "x" Confec', "Teto", 14, "numero"),
-        ("Compra Sugerida Bruta", "Bruta", 16, "numero"),
-        ("Compra Sugerida", "Sugerida", 17, "numero"),
-        ("Saldo 1", "Saldo 1", 12, "numero"),
-        ("Saldo 2", "Saldo 2", 12, "numero"),
-        ("Saldo 3", "Saldo 3", 12, "numero"),
-        ("Demanda", "Demanda", 14, "numero"),
-        ("Situação do item", "Situação", 20, "texto"),
-    ]
-    colunas = [coluna for coluna in colunas if coluna[0] in df_pdf.columns]
+    return _gerar_pdf_compra_sugerida(df_pdf, data_referencia)
 
-    buffer = io.BytesIO()
-    documento = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(A4),
-        leftMargin=12 * mm,
-        rightMargin=12 * mm,
-        topMargin=12 * mm,
-        bottomMargin=16 * mm,
-        title="Compra Sugerida - Análise de Estoque",
-        author="Sistema de Confecção",
-    )
-
-    estilo_titulo = ParagraphStyle(
-        "pdf_titulo",
-        fontName="Helvetica-Bold",
-        fontSize=15,
-        leading=18,
-        textColor=colors.HexColor("#0f172a"),
-    )
-    estilo_subtitulo = ParagraphStyle(
-        "pdf_subtitulo",
-        fontName="Helvetica",
-        fontSize=8.5,
-        leading=11,
-        textColor=colors.HexColor("#475569"),
-    )
-    estilo_cabecalho = ParagraphStyle(
-        "pdf_cabecalho",
-        fontName="Helvetica-Bold",
-        fontSize=7,
-        leading=8.5,
-        alignment=TA_CENTER,
-        textColor=colors.HexColor("#0f172a"),
-    )
-    estilo_celula = ParagraphStyle(
-        "pdf_celula",
-        fontName="Helvetica",
-        fontSize=7,
-        leading=8.5,
-    )
-
-    total_sugerida = pd.to_numeric(
-        df_pdf.get("Compra Sugerida"), errors="coerce"
-    ).fillna(0).sum()
-    total_bruta = pd.to_numeric(
-        df_pdf.get("Compra Sugerida Bruta"), errors="coerce"
-    ).fillna(0).sum()
-    resumo = (
-        f"{len(df_pdf)} item(ns) com sugestão · "
-        f"Total sugerido: {_pdf_numero(total_sugerida)} un. · "
-        f"Total bruto: {_pdf_numero(total_bruta)} un."
-    )
-
-    dados = [[Paragraph(titulo, estilo_cabecalho) for _, titulo, _, _ in colunas]]
-    for _, linha_df in df_pdf.iterrows():
-        linha = []
-        for coluna, _, _, tipo in colunas:
-            valor = linha_df.get(coluna)
-            if tipo == "numero":
-                linha.append(_pdf_numero(valor))
-            else:
-                linha.append(Paragraph(_pdf_texto(valor), estilo_celula))
-        dados.append(linha)
-
-    if len(df_pdf) == 0:
-        vazio = [Paragraph("Nenhum item com compra sugerida nos filtros atuais.", estilo_celula)]
-        vazio.extend([""] * (len(colunas) - 1))
-        dados.append(vazio)
-
-    largura_fixa = sum(largura for _, _, largura, _ in colunas if largura) * mm
-    largura_descricao = max(45 * mm, documento.width - largura_fixa)
-    larguras = [
-        largura * mm if largura else largura_descricao
-        for _, _, largura, _ in colunas
-    ]
-
-    estilo_tabela = TableStyle(
-        [
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-            ("TOPPADDING", (0, 0), (-1, -1), 2),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-            ("LEFTPADDING", (0, 0), (-1, -1), 3),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-        ]
-    )
-    for indice, (_, _, _, tipo) in enumerate(colunas):
-        if tipo == "numero":
-            estilo_tabela.add("ALIGN", (indice, 1), (indice, -1), "RIGHT")
-
-    tabela = Table(dados, colWidths=larguras, repeatRows=1, splitByRow=1)
-    tabela.setStyle(estilo_tabela)
-
-    story = [
-        Paragraph("Compra Sugerida", estilo_titulo),
-        Paragraph(
-            f"Análise de Estoque · Data de referência: {data_referencia}",
-            estilo_subtitulo,
-        ),
-        Paragraph(resumo, estilo_subtitulo),
-        Spacer(1, 4 * mm),
-        tabela,
-    ]
-
-    def rodape(canvas, _documento):
-        canvas.saveState()
-        canvas.setFont("Helvetica", 7)
-        canvas.setFillColor(colors.HexColor("#64748b"))
-        canvas.drawString(12 * mm, 8 * mm, "Sistema de Confecção - Análise de Estoque")
-        canvas.drawRightString(
-            landscape(A4)[0] - 12 * mm,
-            8 * mm,
-            f"Página {canvas.getPageNumber()}",
-        )
-        canvas.restoreState()
-
-    documento.build(story, onFirstPage=rodape, onLaterPages=rodape)
-    return buffer.getvalue()
 
 st.set_page_config(
     page_title="Análise de Estoque",
