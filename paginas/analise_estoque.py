@@ -18,7 +18,6 @@ from datetime import date
 import numpy as np
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 
 from nucleo import (
@@ -346,62 +345,7 @@ with col_b:
     fig.update_layout(height=400, margin=dict(t=50, l=10, r=10, b=10))
     st.plotly_chart(fig, width="stretch")
 
-# ==================== 3. COBERTURA DA DEMANDA ====================
-
-st.markdown('<div class="db-secao">🎯 Cobertura da demanda (estoque × pedidos)</div>', unsafe_allow_html=True)
-
-df_dem = df[df["Demanda"] > 0].copy()
-
-if df_dem.empty:
-    st.info("Não há demanda em aberto (Pedidos) para os itens selecionados.")
-else:
-    fig = px.scatter(
-        df_dem,
-        x="Saldo 3",
-        y="Demanda",
-        color="Marca",
-        size="QtdPedida" if "QtdPedida" in df_dem else "Demanda",
-        hover_name="Descrição",
-        hover_data={"Saldo 3": ":,.0f", "Demanda": ":,.0f", "Cobertura": ":.2f"},
-        labels={"Saldo 3": "Saldo 3 (estoque total)", "Demanda": "Demanda em aberto (pedidos)"},
-        title="Cobertura por item — pontos abaixo da diagonal estão em déficit",
-        template=template_plotly(),
-    )
-    limite = float(max(df_dem["Saldo 3"].max(), df_dem["Demanda"].max())) or 1
-    fig.add_trace(
-        go.Scatter(
-            x=[0, limite],
-            y=[0, limite],
-            mode="lines",
-            name="Saldo 3 = Demanda",
-            line=dict(color="#b71c1c", dash="dash", width=2),
-        )
-    )
-    fig.update_layout(height=470, margin=dict(t=55, l=10, r=10, b=10))
-    st.plotly_chart(fig, width="stretch")
-
-    df_def = df_dem.sort_values("Déficit").copy()
-    df_def["Item"] = (
-        para_texto(df_def["Descrição"]).str.slice(0, 40)
-        + " ("
-        + para_texto(df_def["Cód Confec"])
-        + ")"
-    )
-    fig = px.bar(
-        df_def.head(top_n).sort_values("Déficit"),
-        x="Déficit",
-        y="Item",
-        orientation="h",
-        color="Déficit",
-        color_continuous_scale=["#c62828", "#e8f5e9"],
-        labels={"Déficit": "Saldo 3 − Demanda", "Item": ""},
-        title=f"Top {min(top_n, len(df_def))} itens em déficit",
-        template=template_plotly(),
-    )
-    fig.update_layout(height=max(420, 26 * min(top_n, len(df_def))), coloraxis_showscale=False, margin=dict(t=55, l=10, r=10, b=10))
-    st.plotly_chart(fig, width="stretch")
-
-# ==================== 4. ANÁLISE DE COMPRA SUGERIDA ====================
+# ==================== 3. ANÁLISE DE COMPRA SUGERIDA ====================
 
 st.markdown("---")
 st.markdown('<div class="db-secao">🛒 Análise de compra sugerida (Saldo 5)</div>', unsafe_allow_html=True)
