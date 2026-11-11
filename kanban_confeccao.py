@@ -18,13 +18,16 @@ import xlsxwriter
 from datetime import date
 
 from nucleo import (
+    BUCKETS_RASTREABILIDADE,
     COLUNAS_ESTOQUE,
     COLUNAS_PEDIDOS,
     CORES_PRIORIDADE,
+    CORES_RASTREABILIDADE,
     FATOR_URGENCIA_PADRAO,
     ORDEM_PRIORIDADE,
     calcular_prioridade,
     classe_prioridade,
+    classificar_rastreabilidade,
     codigos_saldo2_negativo,
     distribuir_qe,
     fmt_compra,
@@ -406,6 +409,19 @@ def pagina_kanban():
     df_kanban["Confeccionado"] = df_kanban["Confeccionado"].fillna("").astype(str).str.strip()
     df_kanban["Cód Confec"] = df_kanban["Cód Confec_norm"]
 
+    # Rastreabilidade: etapa do pedido e retorno de produção
+    if "QtdRet" not in df_kanban.columns:
+        if "Qtd Ret" in df_kanban.columns:
+            df_kanban["QtdRet"] = df_kanban["Qtd Ret"]
+        else:
+            df_kanban["QtdRet"] = 0
+    df_kanban["QtdRet"] = pd.to_numeric(df_kanban["QtdRet"], errors="coerce").fillna(0)
+    df_kanban["Classificacao"] = df_kanban["Status"].map(classificar_rastreabilidade)
+    qtd_segura = df_kanban["Qtd"].where(df_kanban["Qtd"] > 0)
+    df_kanban["Retorno %"] = (
+        (df_kanban["QtdRet"] / qtd_segura * 100).fillna(0).clip(0, 100)
+    )
+
     if df_kanban.empty:
         st.warning("Nenhum pedido encontrado para os códigos com Saldo 2 negativo no Estoque.")
         st.stop()
@@ -516,6 +532,48 @@ def pagina_kanban():
         f"(|Saldo 2| × {fator_urgencia:.2f}, distribuída por prioridade e limitada ao Saldo de cada pedido) &nbsp;|&nbsp; "
         f"🔍 <b>{len(codigos_saldo2_neg)}</b> código(s) com Saldo 2 negativo no Estoque &nbsp;|&nbsp; "
         f"📅 Data de referência: <b>{date.today().strftime('%d/%m/%Y')}</b></div>",
+        unsafe_allow_html=True,
+    )
+
+    # ==================== RASTREABILIDADE (RESUMO GLOBAL) ====================
+
+    totais_etapa = (
+        df_filtrado.groupby("Classificacao")
+        .agg(Pedidos=("Compra", "count"), Unidades=("Saldo", "sum"))
+        .reindex(list(BUCKETS_RASTREABILIDADE) + ["Sem classificação"])
+        .fillna(0)
+    )
+
+    etapas_html = []
+    for etapa in BUCKETS_RASTREABILIDADE:
+        cor = CORES_RASTREABILIDADE[etapa]
+        n_pedidos = int(totais_etapa.loc[etapa, "Pedidos"])
+        unidades = float(totais_etapa.loc[etapa, "Unidades"])
+        etapas_html.append(
+            "<span style='display:inline-flex;align-items:center;gap:0.4rem;white-space:nowrap;'>"
+            f"<span style='width:9px;height:9px;border-radius:50%;background:{cor};display:inline-block;'></span>"
+            f"{html.escape(etapa)} <b>{n_pedidos}</b> pedido(s) · <b>{fmt_num(unidades)}</b> un.</span>"
+        )
+
+    sem_classificacao = int(totais_etapa.loc["Sem classificação", "Pedidos"])
+    if sem_classificacao > 0:
+        etapas_html.append(
+            "<span style='display:inline-flex;align-items:center;gap:0.4rem;white-space:nowrap;'>"
+            "<span style='width:9px;height:9px;border-radius:50%;background:#9e9e9e;display:inline-block;'></span>"
+            f"Sem classificação <b>{sem_classificacao}</b> pedido(s)</span>"
+        )
+
+    total_retornado = float(df_filtrado["QtdRet"].sum())
+    total_pedido_qtd = float(df_filtrado["Qtd"].sum())
+    pct_retorno = (
+        total_retornado / total_pedido_qtd * 100 if total_pedido_qtd > 0 else 0.0
+    )
+
+    st.markdown(
+        "<div class='kb-info-box'>🧭 <b>Rastreabilidade dos pedidos</b> &nbsp;|&nbsp; "
+        + " &nbsp;|&nbsp; ".join(etapas_html)
+        + f" &nbsp;|&nbsp; ↩️ Retorno de produção: <b>{fmt_num(total_retornado)}</b>"
+        + f" de <b>{fmt_num(total_pedido_qtd)}</b> un. ({pct_retorno:.0f}%)</div>",
         unsafe_allow_html=True,
     )
 
@@ -1322,6 +1380,33 @@ def pagina_kanban():
                 unsafe_allow_html=True,
             )
 
+            # Linha de rastreabilidade: etapa do pedido no fluxo de produção
+            etapas_conf = df_col["Classificacao"].value_counts()
+            unidades_conf = df_col.groupby("Classificacao")["Saldo"].sum()
+            chips_conf = []
+            for etapa in BUCKETS_RASTREABILIDADE:
+                cor = CORES_RASTREABILIDADE[etapa]
+                chips_conf.append(
+                    "<span style='display:inline-flex;align-items:center;gap:0.35rem;white-space:nowrap;'>"
+                    f"<span style='width:8px;height:8px;border-radius:50%;background:{cor};display:inline-block;'></span>"
+                    f"{html.escape(etapa)} <b>{int(etapas_conf.get(etapa, 0))}</b> · "
+                    f"<b>{fmt_num(unidades_conf.get(etapa, 0.0))}</b> un.</span>"
+                )
+            sem_classificacao_conf = int(etapas_conf.get("Sem classificação", 0))
+            if sem_classificacao_conf > 0:
+                chips_conf.append(
+                    "<span style='display:inline-flex;align-items:center;gap:0.35rem;white-space:nowrap;'>"
+                    "<span style='width:8px;height:8px;border-radius:50%;background:#9e9e9e;display:inline-block;'></span>"
+                    f"Sem classificação <b>{sem_classificacao_conf}</b></span>"
+                )
+            st.markdown(
+                "<div class='kb-tab-summary'>🧭 "
+                + " &nbsp;|&nbsp; ".join(chips_conf)
+                + f" &nbsp;|&nbsp; ↩️ Retorno <b>{fmt_num(df_col['QtdRet'].sum())}</b>"
+                + f" de <b>{fmt_num(df_col['Qtd'].sum())}</b> un.</div>",
+                unsafe_allow_html=True,
+            )
+
             if df_col.empty:
                 st.info("Nenhum pedido nesta confecção com os filtros atuais.")
             else:
@@ -1333,17 +1418,107 @@ def pagina_kanban():
                 )
                 st.markdown(html_sheet(df_col), unsafe_allow_html=True)
 
+                with st.expander(
+                    f"🧭 Rastreabilidade dos pedidos desta confecção ({len(df_col)})"
+                ):
+                    detalhe_kanban = df_col.sort_values(
+                        ["Dt Entrega", "Saldo"],
+                        ascending=[True, False],
+                        na_position="last",
+                    )
+                    st.dataframe(
+                        detalhe_kanban[
+                            [
+                                coluna
+                                for coluna in (
+                                    "Compra",
+                                    "Status",
+                                    "Classificacao",
+                                    "Cód Confec",
+                                    "Confeccionado",
+                                    "Qtd",
+                                    "QtdRet",
+                                    "Retorno %",
+                                    "Saldo",
+                                    "Q.E",
+                                    "Dt Entrega",
+                                    "Prioridade",
+                                )
+                                if coluna in detalhe_kanban.columns
+                            ]
+                        ],
+                        width="stretch",
+                        hide_index=True,
+                        column_config={
+                            "Compra": st.column_config.TextColumn(
+                                "Pedido", width="small"
+                            ),
+                            "Status": st.column_config.TextColumn(
+                                "Status", width="small"
+                            ),
+                            "Classificacao": st.column_config.TextColumn(
+                                "Classificação", width="small"
+                            ),
+                            "Cód Confec": st.column_config.TextColumn(
+                                "Código", width="small"
+                            ),
+                            "Confeccionado": st.column_config.TextColumn(
+                                "Item", width="large"
+                            ),
+                            "Qtd": st.column_config.NumberColumn(
+                                "Qtd", format="%d"
+                            ),
+                            "QtdRet": st.column_config.NumberColumn(
+                                "Qtd retornada", format="%d"
+                            ),
+                            "Retorno %": st.column_config.ProgressColumn(
+                                "Retorno",
+                                min_value=0,
+                                max_value=100,
+                                format="%d%%",
+                            ),
+                            "Saldo": st.column_config.NumberColumn(
+                                "Saldo em aberto", format="%d"
+                            ),
+                            "Q.E": st.column_config.NumberColumn(
+                                "Q.E (Emergencial)", format="%d"
+                            ),
+                            "Dt Entrega": st.column_config.DateColumn(
+                                "Dt Entrega", format="DD/MM/YYYY"
+                            ),
+                            "Prioridade": st.column_config.TextColumn(
+                                "Prioridade", width="small"
+                            ),
+                        },
+                    )
+
     # ==================== TABELA E EXPORTAÇÃO ====================
 
     st.markdown("---")
     st.markdown("### 📋 Detalhamento e exportação")
 
     df_tabela = df_filtrado[
-        ["Compra", "Cód Confec", "Confeccionado", "Saldo", "Q.E", "Dt Entrega", "Prioridade", "Confecção"]
+        [
+            "Compra",
+            "Status",
+            "Classificacao",
+            "Cód Confec",
+            "Confeccionado",
+            "Qtd",
+            "QtdRet",
+            "Retorno %",
+            "Saldo",
+            "Q.E",
+            "Dt Entrega",
+            "Prioridade",
+            "Confecção",
+        ]
     ].copy()
     df_tabela = df_tabela.rename(
         columns={
             "Compra": "Pedido",
+            "Classificacao": "Classificação",
+            "QtdRet": "Qtd Retornada",
             "Saldo": "Quantidade",
             "Q.E": "Q.E (Emergencial)",
             "Dt Entrega": "Data de Entrega",
@@ -1357,8 +1532,18 @@ def pagina_kanban():
             hide_index=True,
             column_config={
                 "Pedido": st.column_config.TextColumn("Pedido", width="small"),
+                "Status": st.column_config.TextColumn("Status", width="small"),
+                "Classificação": st.column_config.TextColumn("Classificação", width="small"),
                 "Cód Confec": st.column_config.TextColumn("Cód Confec", width="small"),
                 "Confeccionado": st.column_config.TextColumn("Descrição", width="large"),
+                "Qtd": st.column_config.NumberColumn("Qtd", format="%d"),
+                "Qtd Retornada": st.column_config.NumberColumn("Qtd Retornada", format="%d"),
+                "Retorno %": st.column_config.ProgressColumn(
+                    "Retorno",
+                    min_value=0,
+                    max_value=100,
+                    format="%d%%",
+                ),
                 "Quantidade": st.column_config.NumberColumn("Quantidade", format="%d"),
                 "Q.E (Emergencial)": st.column_config.NumberColumn("Q.E (Emergencial)", format="%d"),
                 "Data de Entrega": st.column_config.DateColumn("Data de Entrega", format="DD/MM/YYYY"),
@@ -1387,6 +1572,7 @@ def pagina_kanban():
                 .agg(
                     Pedidos=("Compra", "count"),
                     Quantidade=("Saldo", "sum"),
+                    Retornado=("QtdRet", "sum"),
                     QE=("Q.E", "sum"),
                 )
                 .reset_index()

@@ -234,6 +234,35 @@ def _normalizar_descricao(descricao):
     return re.sub(r"\s+", " ", texto.upper()).strip()
 
 
+# ==================== RASTREABILIDADE DOS PEDIDOS ====================
+
+BUCKETS_RASTREABILIDADE = (
+    "Aguardando envio",
+    "Aguardando produção",
+    "Aguardando saldo",
+)
+
+MAPA_STATUS_RASTREABILIDADE = {
+    "ORCAMENTO": "Aguardando envio",
+    "EM SEPARACAO": "Aguardando envio",
+    "PEDIDO": "Aguardando envio",
+    "PEDIDO C/ FORN": "Aguardando produção",
+    "FAT. PARCIAL": "Aguardando saldo",
+}
+
+CORES_RASTREABILIDADE = {
+    "Aguardando envio": "#667eea",
+    "Aguardando produção": "#ef6c00",
+    "Aguardando saldo": "#2e7d32",
+}
+
+
+def classificar_rastreabilidade(status):
+    """Classifica o status do pedido nas etapas de rastreabilidade."""
+    chave = _normalizar_descricao(status)
+    return MAPA_STATUS_RASTREABILIDADE.get(chave, "Sem classificação")
+
+
 def _tamanho_numerico(valor):
     """Reconhece numerações plausíveis (adulto 34–60 e infantil 1–16)."""
     try:

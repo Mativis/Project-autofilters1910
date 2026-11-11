@@ -22,6 +22,7 @@ A compra sugerida usa a mesma regra da Análise de Estoque
                    tamanho e/ou a mesma Operação Produtiva.
 """
 
+import html
 import io
 import math
 import unicodedata
@@ -33,9 +34,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from nucleo import (
+    BUCKETS_RASTREABILIDADE,
+    CORES_RASTREABILIDADE,
     aplicar_estilo_comum,
     cabecalho,
     card,
+    classificar_rastreabilidade,
     extrair_tamanho,
     fmt_data,
     fmt_num,
@@ -56,6 +60,77 @@ st.set_page_config(
 )
 
 aplicar_estilo_comum()
+
+# ==================== ESTILO KANBAN (CHIPS E RESUMO) ====================
+
+st.markdown(
+    """
+    <style>
+        .pj-legend {
+            display: flex;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+            margin: 0 0 1.25rem 0;
+        }
+        .pj-legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--db-surface);
+            border: 1px solid var(--db-border);
+            color: var(--db-text);
+            border-radius: 999px;
+            padding: 0.4rem 1rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            box-shadow: 0 1px 3px var(--db-shadow);
+            transition: all 0.2s ease;
+        }
+        .pj-legend-item:hover {
+            box-shadow: 0 4px 12px var(--db-shadow);
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+        .pj-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .pj-dot.envio { background: #667eea; }
+        .pj-dot.producao { background: #ef6c00; }
+        .pj-dot.saldo { background: #2e7d32; }
+        .pj-dot.ja { background: #2e7d32; }
+        .pj-dot.semelhante { background: #ef6c00; }
+        .pj-dot.semhistorico { background: #9e9e9e; }
+        .pj-summary {
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.08) 0%, transparent 100%);
+            border: 1px solid var(--db-border);
+            border-left: 3px solid #6366f1;
+            border-radius: 12px;
+            padding: 0.8rem 1.2rem;
+            margin: 0.25rem 0 1rem 0;
+            font-size: 0.875rem;
+            color: var(--db-text-soft);
+            font-weight: 500;
+            line-height: 1.9;
+        }
+        .pj-summary b { color: var(--db-text); font-weight: 700; }
+        .pj-pill {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 0.2rem 0.65rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: #ffffff;
+            white-space: nowrap;
+        }
+        .pj-pill.ok { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); }
+        .pj-pill.muted { background: #64748b; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 df_pedidos_raw, df_estoque_raw = sidebar_arquivos()
 
@@ -96,21 +171,9 @@ with st.sidebar:
 
 # ==================== CONSTANTES ====================
 
-BUCKETS_ORDEM = ("Aguardando envio", "Aguardando produção", "Aguardando saldo")
+BUCKETS_ORDEM = BUCKETS_RASTREABILIDADE
 
-MAPA_STATUS = {
-    "ORCAMENTO": "Aguardando envio",
-    "EM SEPARACAO": "Aguardando envio",
-    "PEDIDO": "Aguardando envio",
-    "PEDIDO C/ FORN": "Aguardando produção",
-    "FAT. PARCIAL": "Aguardando saldo",
-}
-
-CORES_BUCKET = {
-    "Aguardando envio": "#667eea",
-    "Aguardando produção": "#ef6c00",
-    "Aguardando saldo": "#2e7d32",
-}
+CORES_BUCKET = CORES_RASTREABILIDADE
 
 CORES_CATEGORIA = {
     "Já produziu": "#2e7d32",
@@ -280,7 +343,7 @@ def preparar_pedidos_pagina(df):
         .clip(lower=0)
     )
     pedidos["Classificacao"] = pedidos["Status"].map(
-        lambda status: MAPA_STATUS.get(_norm(status), "Sem classificação")
+        classificar_rastreabilidade
     )
     pedidos["Tipo"] = _texto_com_padrao(
         _coluna(pedidos, "Tipo do Confeccionado"), "Sem tipo"
@@ -671,6 +734,20 @@ cabecalho(
     f"referência: {pd.Timestamp.today().strftime('%d/%m/%Y')}",
 )
 
+st.markdown(
+    """
+    <div class="pj-legend">
+        <span class="pj-legend-item"><span class="pj-dot envio"></span> Aguardando envio</span>
+        <span class="pj-legend-item"><span class="pj-dot producao"></span> Aguardando produção</span>
+        <span class="pj-legend-item"><span class="pj-dot saldo"></span> Aguardando saldo</span>
+        <span class="pj-legend-item"><span class="pj-dot ja"></span> Já produziu</span>
+        <span class="pj-legend-item"><span class="pj-dot semelhante"></span> Semelhante</span>
+        <span class="pj-legend-item"><span class="pj-dot semhistorico"></span> Sem histórico</span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 if not dados_producao:
     st.info(
         "👆 Envie a planilha **Produção por confecção.xlsx** na barra lateral. "
@@ -949,13 +1026,23 @@ else:
             else 0
         )
 
+        semanas_ficha = registro["Semanas p/ absorver"]
+        status_html = (
+            '<span class="pj-pill ok">🟢 com histórico</span>'
+            if tem_historico
+            else '<span class="pj-pill muted">⚪ sem histórico</span>'
+        )
         st.markdown(
-            f"#### {confeccao_ficha} · "
-            + (
-                "🟢 com histórico de produção"
-                if tem_historico
-                else "⚪ sem histórico de produção"
-            )
+            f"""
+            <div class="pj-summary">
+                🏭 <b>{html.escape(str(confeccao_ficha))}</b> &nbsp;·&nbsp; {status_html} &nbsp;·&nbsp;
+                ⚡ Capacidade <b>{fmt_num(capacidade_ficha)}</b> un./semana &nbsp;·&nbsp;
+                📦 Em aberto <b>{fmt_num(registro["Saldo aberto"])}</b> un. &nbsp;·&nbsp;
+                🛒 Compra <b>{fmt_num(registro["Compra atribuída"])}</b> un. &nbsp;·&nbsp;
+                ⏳ <b>{fmt_num(semanas_ficha) if pd.notna(semanas_ficha) else "—"}</b> semana(s)
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
         e1, e2, e3, e4 = st.columns(4)
@@ -994,7 +1081,6 @@ else:
                 unsafe_allow_html=True,
             )
         with e4:
-            semanas_ficha = registro["Semanas p/ absorver"]
             st.markdown(
                 card(
                     "Semanas p/ absorver",
@@ -1146,9 +1232,21 @@ else:
                 & (pedidos["SaldoAberto"] > 0)
             ].copy()
 
-        with st.expander(
-            f"📋 Pedidos em aberto desta confecção ({len(pedidos_ficha)})"
-        ):
+        compra_ficha = (
+            compra[compra["Confecção sugerida"] == confeccao_ficha].copy()
+            if compra is not None and not compra.empty
+            else pd.DataFrame()
+        )
+
+        aba_pedidos, aba_compra, aba_historico = st.tabs(
+            [
+                f"📋 Pedidos em aberto ({len(pedidos_ficha)})",
+                f"🛒 Compra sugerida ({len(compra_ficha)})",
+                f"🧵 Itens já produzidos ({n_itens_historico})",
+            ]
+        )
+
+        with aba_pedidos:
             if pedidos_ficha.empty:
                 st.caption(
                     "Nenhum pedido com saldo em aberto para esta confecção."
@@ -1158,7 +1256,12 @@ else:
                     ["Dt Entrega", "SaldoAberto"],
                     ascending=[True, False],
                     na_position="last",
-                )
+                ).copy()
+                detalhe_ficha["Retorno %"] = (
+                    detalhe_ficha["QtdRet"]
+                    / detalhe_ficha["Qtd"].where(detalhe_ficha["Qtd"] > 0)
+                    * 100
+                ).fillna(0).clip(0, 100)
                 st.dataframe(
                     detalhe_ficha[
                         [
@@ -1171,6 +1274,7 @@ else:
                                 "Confeccionado",
                                 "Qtd",
                                 "QtdRet",
+                                "Retorno %",
                                 "SaldoAberto",
                                 "Dt Entrega",
                             )
@@ -1201,6 +1305,12 @@ else:
                         "QtdRet": st.column_config.NumberColumn(
                             "Qtd retornada", format="%d"
                         ),
+                        "Retorno %": st.column_config.ProgressColumn(
+                            "Retorno",
+                            min_value=0,
+                            max_value=100,
+                            format="%d%%",
+                        ),
                         "SaldoAberto": st.column_config.NumberColumn(
                             "Saldo em aberto", format="%d"
                         ),
@@ -1210,15 +1320,7 @@ else:
                     },
                 )
 
-        compra_ficha = (
-            compra[compra["Confecção sugerida"] == confeccao_ficha].copy()
-            if compra is not None and not compra.empty
-            else pd.DataFrame()
-        )
-
-        with st.expander(
-            f"🛒 Compra sugerida desta confecção ({len(compra_ficha)})"
-        ):
+        with aba_compra:
             if compra_ficha.empty:
                 st.caption(
                     "Nenhum item de compra sugerida atribuído a esta confecção."
@@ -1275,9 +1377,7 @@ else:
                     },
                 )
 
-        with st.expander(
-            f"🧵 Itens já produzidos por esta confecção ({n_itens_historico})"
-        ):
+        with aba_historico:
             if historico_ficha.empty:
                 st.caption(
                     "Esta confecção ainda não tem itens no histórico de produção."
@@ -1761,109 +1861,7 @@ else:
                     },
                 )
 
-# ==================== 5. PROJEÇÃO CONSOLIDADA ====================
-
-st.markdown(
-    '<div class="db-secao">📊 Projeção consolidada por confecção</div>',
-    unsafe_allow_html=True,
-)
-
-if consolidado.empty:
-    st.info("Sem dados suficientes para consolidar a projeção.")
-else:
-    consolidado_sel = consolidado[
-        consolidado["Confecção"].isin(confeccoes_sel)
-    ].copy()
-    if somente_com_aberto:
-        consolidado_sel = consolidado_sel[consolidado_sel["Saldo aberto"] > 0]
-
-    consolidado_graf = consolidado_sel.sort_values(
-        "Semanas p/ absorver", ascending=False, na_position="last"
-    ).head(top_n)
-    consolidado_graf = consolidado_graf.dropna(subset=["Semanas p/ absorver"])
-
-    if not consolidado_graf.empty:
-        fig = px.bar(
-            consolidado_graf.sort_values("Semanas p/ absorver"),
-            x="Semanas p/ absorver",
-            y="Confecção",
-            orientation="h",
-            color="Semanas p/ absorver",
-            color_continuous_scale=["#e8f5e9", "#2e7d32"],
-            labels={
-                "Semanas p/ absorver": "Semanas estimadas",
-                "Confecção": "",
-            },
-            title="Semanas para absorver pedidos abertos + compra sugerida",
-            template=template_plotly(),
-        )
-        fig.update_layout(
-            height=max(380, 28 * len(consolidado_graf)),
-            coloraxis_showscale=False,
-            margin=dict(t=55, l=10, r=10, b=10),
-        )
-        st.plotly_chart(fig, width="stretch")
-
-    st.dataframe(
-        consolidado_sel[
-            [
-                "Confecção",
-                "Com histórico",
-                "Capacidade semanal",
-                "Semanas observadas",
-                "Saldo aberto",
-                "Aguardando envio",
-                "Aguardando produção",
-                "Aguardando saldo",
-                "Compra atribuída",
-                "Itens sugeridos",
-                "Semanas p/ absorver",
-            ]
-        ],
-        width="stretch",
-        hide_index=True,
-        column_config={
-            "Confecção": st.column_config.TextColumn("Confecção", width="large"),
-            "Com histórico": st.column_config.TextColumn(
-                "Histórico", width="small"
-            ),
-            "Capacidade semanal": st.column_config.NumberColumn(
-                "Capacidade semanal (un.)", format="%d"
-            ),
-            "Semanas observadas": st.column_config.NumberColumn(
-                "Semanas observadas", format="%d"
-            ),
-            "Saldo aberto": st.column_config.NumberColumn(
-                "Pedidos em aberto (un.)", format="%d"
-            ),
-            "Aguardando envio": st.column_config.NumberColumn(
-                "Aguardando envio", format="%d"
-            ),
-            "Aguardando produção": st.column_config.NumberColumn(
-                "Aguardando produção", format="%d"
-            ),
-            "Aguardando saldo": st.column_config.NumberColumn(
-                "Aguardando saldo", format="%d"
-            ),
-            "Compra atribuída": st.column_config.NumberColumn(
-                "Compra sugerida atribuída (un.)", format="%d"
-            ),
-            "Itens sugeridos": st.column_config.NumberColumn(
-                "Itens sugeridos", format="%d"
-            ),
-            "Semanas p/ absorver": st.column_config.NumberColumn(
-                "Semanas p/ absorver", format="%d"
-            ),
-        },
-    )
-
-    st.caption(
-        "A compra sugerida é atribuída à confecção com maior aderência ao histórico "
-        "do item (código exato > semelhante). Itens sem nenhuma confecção compatível "
-        "aparecem como **Sem histórico** e não entram na coluna de compra atribuída."
-    )
-
-# ==================== 6. EXPORTAÇÃO ====================
+# ==================== 5. EXPORTAÇÃO ====================
 
 st.markdown("### 📥 Exportar a projeção")
 
