@@ -63,34 +63,39 @@ st.set_page_config(
 
 aplicar_estilo_comum()
 
-# ==================== ESTILO KANBAN (CHIPS E RESUMO) ====================
+# ==================== ESTILIZAÇÃO E DESIGN SYSTEM ====================
 
 st.markdown(
     """
     <style>
-        .pj-legend {
+        /* Container de Legend Chips */
+        .pj-legend-container {
             display: flex;
             gap: 0.6rem;
             flex-wrap: wrap;
-            margin: 0 0 1.25rem 0;
+            margin: 0.5rem 0 1.5rem 0;
+            padding: 0.8rem 1rem;
+            background: var(--db-surface, #ffffff);
+            border: 1px solid var(--db-border, #e2e8f0);
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         }
         .pj-legend-item {
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
-            background: var(--db-surface);
-            border: 1px solid var(--db-border);
-            color: var(--db-text);
+            background: rgba(241, 245, 249, 0.6);
+            border: 1px solid var(--db-border, #cbd5e1);
+            color: var(--db-text, #1e293b);
             border-radius: 999px;
-            padding: 0.4rem 1rem;
-            font-size: 0.8rem;
+            padding: 0.35rem 0.85rem;
+            font-size: 0.78rem;
             font-weight: 600;
-            box-shadow: 0 1px 3px var(--db-shadow);
             transition: all 0.2s ease;
         }
         .pj-legend-item:hover {
-            box-shadow: 0 4px 12px var(--db-shadow);
-            border-color: rgba(99, 102, 241, 0.3);
+            border-color: #6366f1;
+            transform: translateY(-1px);
         }
         .pj-dot {
             width: 8px;
@@ -104,31 +109,70 @@ st.markdown(
         .pj-dot.ja { background: #2e7d32; }
         .pj-dot.semelhante { background: #ef6c00; }
         .pj-dot.semhistorico { background: #9e9e9e; }
-        .pj-summary {
-            background: linear-gradient(90deg, rgba(99, 102, 241, 0.08) 0%, transparent 100%);
-            border: 1px solid var(--db-border);
-            border-left: 3px solid #6366f1;
-            border-radius: 12px;
-            padding: 0.8rem 1.2rem;
-            margin: 0.25rem 0 1rem 0;
-            font-size: 0.875rem;
-            color: var(--db-text-soft);
-            font-weight: 500;
-            line-height: 1.9;
+        
+        /* Banner de Resumo da Confecção (Ficha) */
+        .pj-summary-card {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(168, 85, 247, 0.05) 100%);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-left: 5px solid #6366f1;
+            border-radius: 14px;
+            padding: 1rem 1.25rem;
+            margin: 0.5rem 0 1.25rem 0;
+            font-size: 0.9rem;
+            color: var(--db-text, #0f172a);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.75rem;
         }
-        .pj-summary b { color: var(--db-text); font-weight: 700; }
+        .pj-summary-info {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+        .pj-summary-title {
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: var(--db-text, #0f172a);
+        }
+        
+        /* Pills & Badges */
         .pj-pill {
             display: inline-flex;
             align-items: center;
+            gap: 0.3rem;
             border-radius: 999px;
-            padding: 0.2rem 0.65rem;
-            font-size: 0.7rem;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.75rem;
             font-weight: 700;
-            color: #ffffff;
             white-space: nowrap;
         }
-        .pj-pill.ok { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); }
-        .pj-pill.muted { background: #64748b; }
+        .pj-pill.ok { 
+            background: rgba(34, 197, 94, 0.12); 
+            color: #15803d; 
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+        .pj-pill.muted { 
+            background: rgba(100, 116, 139, 0.12); 
+            color: #475569; 
+            border: 1px solid rgba(100, 116, 139, 0.3);
+        }
+
+        /* Banner Informativo */
+        .pj-info-banner {
+            background: var(--db-surface, #ffffff);
+            border: 1px solid var(--db-border, #e2e8f0);
+            border-radius: 12px;
+            padding: 0.85rem 1.15rem;
+            margin: 1rem 0;
+            font-size: 0.85rem;
+            color: var(--db-text-soft, #475569);
+            line-height: 1.5;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        }
     </style>
     """,
     unsafe_allow_html=True,
@@ -146,11 +190,11 @@ with st.sidebar:
     nome_producao = st.session_state.get("producao_conf_nome")
     if nome_producao:
         st.markdown(
-            f'<div class="db-file-ok">✅ <b>Produção por confecção</b>'
+            f'<div class="db-file-ok">✅ <b>Produção por confecção</b><br>'
             f'<span class="db-file-name">{nome_producao}</span></div>',
             unsafe_allow_html=True,
         )
-        if st.button("🔄 Trocar produção", key="pc_trocar_producao"):
+        if st.button("🔄 Trocar produção", key="pc_trocar_producao", use_container_width=True):
             for chave in CHAVES_PRODUCAO:
                 st.session_state.pop(chave, None)
             st.session_state.pop("producao_conf_df", None)
@@ -254,8 +298,6 @@ def preparar_producao(df):
     producao["Medida"] = para_texto(_coluna(bruto, "Medida")).str.strip()
     producao["Marca"] = _texto_com_padrao(_coluna(bruto, "Marca"), "Sem Marca")
 
-    # A planilha traz uma linha de total geral (Fornecedor numérico, sem data e
-    # sem código) que duplicaria a capacidade. Só entram retornos identificados.
     validos = (
         (producao["Fornecedor"] != "")
         & (producao["Codigo"] != "")
@@ -457,11 +499,7 @@ def montar_historico(producao, pedidos):
 
 
 def classificar_compra(estoque, historico, capacidades):
-    """Classifica cada compra sugerida como 'Já produziu' ou 'Semelhante'.
-
-    Devolve ``(compra, detalhe)``: a compra com a melhor confecção sugerida e o
-    detalhe de todas as confecções compatíveis com cada item.
-    """
+    """Classifica cada compra sugerida como 'Já produziu' ou 'Semelhante'."""
     if estoque is None or estoque.empty:
         return pd.DataFrame(), pd.DataFrame()
 
@@ -726,7 +764,7 @@ def montar_consolidado(capacidades, pedidos_resumo, compra):
     ).reset_index(drop=True)
 
 
-# ==================== LEITURA ====================
+# ==================== CARREGAMENTO DE DADOS ====================
 
 dados_producao = st.session_state.get("producao_conf_bytes")
 
@@ -736,9 +774,10 @@ cabecalho(
     f"referência: {pd.Timestamp.today().strftime('%d/%m/%Y')}",
 )
 
+# Legenda Visual Customizada (Chips)
 st.markdown(
     """
-    <div class="pj-legend">
+    <div class="pj-legend-container">
         <span class="pj-legend-item"><span class="pj-dot envio"></span> Aguardando envio</span>
         <span class="pj-legend-item"><span class="pj-dot producao"></span> Aguardando produção</span>
         <span class="pj-legend-item"><span class="pj-dot saldo"></span> Aguardando saldo</span>
@@ -759,7 +798,7 @@ if not dados_producao:
 
 try:
     producao_bruta = load_excel(dados_producao)
-except Exception as erro:  # noqa: BLE001
+except Exception as erro:
     st.error(f"Não foi possível ler a planilha de produção: {erro}")
     st.stop()
 
@@ -784,7 +823,7 @@ if estoque is None:
         "Envie o arquivo de **Estoque** na barra lateral para calcular a compra sugerida."
     )
 
-# ==================== FILTROS ====================
+# ==================== FILTROS DA SIDEBAR ====================
 
 semanas_disponiveis = int(producao["Semana"].nunique())
 
@@ -842,7 +881,7 @@ with st.sidebar:
         key="pc_somente_aberto",
     )
 
-# ==================== CAPACIDADE ====================
+# ==================== PROCESSAMENTO E MATRIZ DE DADOS ====================
 
 capacidades = resumo_capacidade(producao, semanas_janela)
 pedidos_resumo = resumo_pedidos(pedidos)
@@ -850,7 +889,7 @@ historico = montar_historico(producao, pedidos)
 compra, detalhe_compra = classificar_compra(estoque, historico, capacidades)
 consolidado = montar_consolidado(capacidades, pedidos_resumo, compra)
 
-# ==================== KPIs ====================
+# ==================== KPIS PRINCIPAIS (6 CARDS METRICOS) ====================
 
 consolidado_escopo = (
     consolidado[consolidado["Confecção"].isin(confeccoes_sel)].copy()
@@ -903,7 +942,7 @@ with k1:
         card(
             "Confecções",
             fmt_num(n_confeccoes),
-            f"{fmt_num(len(capacidades[capacidades['Fornecedor'].isin(confeccoes_sel)]))} com histórico de produção",
+            f"{fmt_num(len(capacidades[capacidades['Fornecedor'].isin(confeccoes_sel)]))} c/ histórico",
             "#667eea",
         ),
         unsafe_allow_html=True,
@@ -913,7 +952,7 @@ with k2:
         card(
             "Capacidade semanal",
             fmt_num(total_capacidade),
-            f"média das últimas {min(semanas_janela, semanas_disponiveis)} semana(s)",
+            f"média de {min(semanas_janela, semanas_disponiveis)} sem.",
             "#2e7d32",
         ),
         unsafe_allow_html=True,
@@ -923,7 +962,7 @@ with k3:
         card(
             "Pedidos em aberto",
             fmt_num(total_aberto),
-            "soma do Saldo dos pedidos",
+            "soma do Saldo aberto",
             "#ef6c00",
         ),
         unsafe_allow_html=True,
@@ -933,7 +972,7 @@ with k4:
         card(
             "Compra sugerida",
             fmt_num(total_compra),
-            "Saldo 5 negativo × 1,1",
+            "|Saldo 5| × 1,1",
             "#b71c1c",
         ),
         unsafe_allow_html=True,
@@ -943,7 +982,7 @@ with k5:
         card(
             "Semanas p/ absorver",
             fmt_num(semanas_globais) if semanas_globais is not None else "—",
-            "pedidos abertos + compra sugerida",
+            "abertos + compra",
             "#764ba2",
         ),
         unsafe_allow_html=True,
@@ -953,29 +992,27 @@ with k6:
         card(
             "Sem histórico",
             fmt_num(n_sem_historico),
-            "confecções com pedidos e sem produção",
+            "c/ pedido e s/ produção",
             "#9e9e9e",
         ),
         unsafe_allow_html=True,
     )
 
 st.markdown(
-    f"<div class='db-aviso'>📈 A capacidade semanal é a <b>média das semanas "
-    f"observadas</b> no arquivo de produção ({semanas_disponiveis} semana(s)), "
-    "considerando a janela escolhida na barra lateral. Pedidos com "
-    "<b>Saldo &gt; 0</b> entram na rastreabilidade; a compra sugerida segue a "
-    'regra <code>|Saldo 5| × 1,1</code> limitada por <code>Tec Faz "x" Confec</code>.</div>',
+    f"<div class='pj-info-banner'>📈 <b>Informação:</b> A capacidade semanal corresponde à "
+    f"<b>média das semanas observadas</b> no histórico ({semanas_disponiveis} semana(s)), "
+    "conforme janela configurada. Pedidos com <b>Saldo > 0</b> são rastreados dinamicamente. "
+    'A compra sugerida é limitada pelo parâmetro <code>Tec Faz "x" Confec</code>.</div>',
     unsafe_allow_html=True,
 )
 
 # ==================== 1. FICHA DA CONFECÇÃO ====================
 
 st.markdown(
-    '<div class="db-secao">🪪 Ficha de indicadores por confecção</div>',
+    '<div class="db-secao">🪪 Ficha de Indicadores por Confecção</div>',
     unsafe_allow_html=True,
 )
 
-# Ordena as opções pelo saldo em aberto para abrir na confecção mais crítica.
 saldo_por_confeccao = (
     dict(zip(consolidado["Confecção"], consolidado["Saldo aberto"]))
     if not consolidado.empty
@@ -995,7 +1032,7 @@ if not opcoes_ficha:
     st.info("Nenhuma confecção disponível com os filtros atuais.")
 else:
     confeccao_ficha = st.selectbox(
-        "Escolha a confecção",
+        "Selecione uma confecção para detalhamento:",
         options=opcoes_ficha,
         key="pc_ficha_confeccao",
         help=(
@@ -1030,18 +1067,23 @@ else:
 
         semanas_ficha = registro["Semanas p/ absorver"]
         status_html = (
-            '<span class="pj-pill ok">🟢 com histórico</span>'
+            '<span class="pj-pill ok">🟢 Com Histórico</span>'
             if tem_historico
-            else '<span class="pj-pill muted">⚪ sem histórico</span>'
+            else '<span class="pj-pill muted">⚪ Sem Histórico</span>'
         )
         st.markdown(
             f"""
-            <div class="pj-summary">
-                🏭 <b>{html.escape(str(confeccao_ficha))}</b> &nbsp;·&nbsp; {status_html} &nbsp;·&nbsp;
-                ⚡ Capacidade <b>{fmt_num(capacidade_ficha)}</b> un./semana &nbsp;·&nbsp;
-                📦 Em aberto <b>{fmt_num(registro["Saldo aberto"])}</b> un. &nbsp;·&nbsp;
-                🛒 Compra <b>{fmt_num(registro["Compra atribuída"])}</b> un. &nbsp;·&nbsp;
-                ⏳ <b>{fmt_num(semanas_ficha) if pd.notna(semanas_ficha) else "—"}</b> semana(s)
+            <div class="pj-summary-card">
+                <div class="pj-summary-info">
+                    <span class="pj-summary-title">🏭 {html.escape(str(confeccao_ficha))}</span>
+                    {status_html}
+                </div>
+                <div>
+                    ⚡ Capacidade: <b>{fmt_num(capacidade_ficha)}</b> un/sem  | 
+                    📦 Em aberto: <b>{fmt_num(registro["Saldo aberto"])}</b> un  | 
+                    🛒 Compra: <b>{fmt_num(registro["Compra atribuída"])}</b> un  | 
+                    ⏳ Absorção: <b>{fmt_num(semanas_ficha) if pd.notna(semanas_ficha) else "—"}</b> sem.
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -1075,7 +1117,7 @@ else:
         with e3:
             st.markdown(
                 card(
-                    "Compra sugerida atribuída",
+                    "Compra atribuída",
                     fmt_num(registro["Compra atribuída"]),
                     f"{fmt_num(registro['Itens sugeridos'])} item(ns)",
                     "#b71c1c",
@@ -1091,7 +1133,7 @@ else:
                         if pd.notna(semanas_ficha)
                         else "—"
                     ),
-                    "pedidos abertos + compra atribuída",
+                    "abertos + compra atribuída",
                     "#764ba2",
                 ),
                 unsafe_allow_html=True,
@@ -1103,7 +1145,7 @@ else:
                 card(
                     "Produção no período",
                     fmt_num(registro["Produção no período"]),
-                    "soma dos retornos do arquivo",
+                    "soma dos retornos",
                     "#3949ab",
                 ),
                 unsafe_allow_html=True,
@@ -1114,7 +1156,7 @@ else:
                 card(
                     "Melhor semana",
                     fmt_num(melhor),
-                    "maior volume semanal",
+                    "pico de produção semanal",
                     "#00897b",
                 ),
                 unsafe_allow_html=True,
@@ -1129,7 +1171,7 @@ else:
                 card(
                     "Última semana",
                     ultima,
-                    "semana mais recente",
+                    "retorno mais recente",
                     "#5e35b1",
                 ),
                 unsafe_allow_html=True,
@@ -1139,14 +1181,14 @@ else:
                 card(
                     "Itens no histórico",
                     fmt_num(n_itens_historico),
-                    "códigos já produzidos",
+                    "códigos já fabricados",
                     "#546e7a",
                 ),
                 unsafe_allow_html=True,
             )
 
         if cap_ficha is not None:
-            st.caption(f"**Tipos produzidos:** {cap_ficha['Tipos']}")
+            st.caption(f"**Tipos já produzidos:** {cap_ficha['Tipos']}")
 
         g1, g2 = st.columns([1.4, 1])
         with g1:
@@ -1167,8 +1209,8 @@ else:
                     x="Rotulo",
                     y="Qtd",
                     text="Qtd",
-                    labels={"Rotulo": "", "Qtd": "Unidades produzidas"},
-                    title="Produção por semana",
+                    labels={"Rotulo": "", "Qtd": "Unidades"},
+                    title="Evolução Semanal de Produção",
                     template=template_plotly(),
                 )
                 fig.update_traces(
@@ -1189,7 +1231,7 @@ else:
                     showlegend=False,
                     margin=dict(t=55, l=10, r=10, b=10),
                 )
-                st.plotly_chart(fig, width="stretch")
+                st.plotly_chart(fig, use_container_width=True)
 
         with g2:
             dados_bucket = pd.DataFrame(
@@ -1212,7 +1254,7 @@ else:
                     color="Classificação",
                     color_discrete_map=CORES_BUCKET,
                     text="Unidades",
-                    title="Pedidos em aberto por classificação",
+                    title="Abertos por Classificação",
                     template=template_plotly(),
                 )
                 fig.update_traces(
@@ -1225,7 +1267,7 @@ else:
                     xaxis_title="Unidades",
                     yaxis_title="",
                 )
-                st.plotly_chart(fig, width="stretch")
+                st.plotly_chart(fig, use_container_width=True)
 
         pedidos_ficha = pd.DataFrame()
         if pedidos is not None and not pedidos.empty:
@@ -1283,7 +1325,7 @@ else:
                             if coluna in detalhe_ficha.columns
                         ]
                     ],
-                    width="stretch",
+                    use_container_width=True,
                     hide_index=True,
                     column_config={
                         "Compra": st.column_config.TextColumn(
@@ -1343,7 +1385,7 @@ else:
                             "Motivo",
                         ]
                     ],
-                    width="stretch",
+                    use_container_width=True,
                     hide_index=True,
                     column_config={
                         "Categoria": st.column_config.TextColumn(
@@ -1409,7 +1451,7 @@ else:
                     )
                 st.dataframe(
                     itens_ficha.head(100),
-                    width="stretch",
+                    use_container_width=True,
                     hide_index=True,
                     column_config={
                         "Codigo": st.column_config.TextColumn(
@@ -1439,7 +1481,7 @@ else:
 # ==================== 2. CAPACIDADE SEMANAL ====================
 
 st.markdown(
-    '<div class="db-secao">⚡ Capacidade semanal por confecção</div>',
+    '<div class="db-secao">⚡ Capacidade Semanal Realizada por Confecção</div>',
     unsafe_allow_html=True,
 )
 
@@ -1455,8 +1497,8 @@ else:
         orientation="h",
         color="CapacidadeSemanal",
         color_continuous_scale=["#e8eaf6", "#3949ab"],
-        labels={"CapacidadeSemanal": "Unidades por semana", "Fornecedor": ""},
-        title=f"Top {len(graf)} confecções por capacidade média semanal",
+        labels={"CapacidadeSemanal": "Unidades/semana", "Fornecedor": ""},
+        title=f"Top {len(graf)} Confecções por Capacidade Média Semanal",
         template=template_plotly(),
     )
     fig.update_layout(
@@ -1464,7 +1506,7 @@ else:
         coloraxis_showscale=False,
         margin=dict(t=55, l=10, r=10, b=10),
     )
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
 tabela_capacidade = capacidades_sel.copy()
 tabela_capacidade["Última semana"] = tabela_capacidade["UltimaSemana"].map(_periodo)
@@ -1490,7 +1532,7 @@ st.dataframe(
     tabela_capacidade[
         [c for c in colunas_capacidade if c in tabela_capacidade.columns]
     ],
-    width="stretch",
+    use_container_width=True,
     hide_index=True,
     column_config={
         "Confecção": st.column_config.TextColumn("Confecção", width="large"),
@@ -1515,7 +1557,7 @@ st.dataframe(
     },
 )
 
-with st.expander("📅 Ver produção por semana"):
+with st.expander("📅 Ver Histórico Semanal Detalhado"):
     semanal = (
         producao[producao["Fornecedor"].isin(confeccoes_sel)]
         .groupby(["Fornecedor", "Semana"], as_index=False)
@@ -1531,12 +1573,12 @@ with st.expander("📅 Ver produção por semana"):
             "Itens": "Itens",
         }
     )
-    st.dataframe(semanal, width="stretch", hide_index=True)
+    st.dataframe(semanal, use_container_width=True, hide_index=True)
 
 # ==================== 3. RASTREABILIDADE DOS PEDIDOS ====================
 
 st.markdown(
-    '<div class="db-secao">🧭 Rastreabilidade dos pedidos em aberto</div>',
+    '<div class="db-secao">🧭 Rastreabilidade dos Pedidos em Aberto</div>',
     unsafe_allow_html=True,
 )
 
@@ -1604,7 +1646,7 @@ else:
             )
         fig.update_layout(
             barmode="stack",
-            title=f"Top {len(resumo_sel)} confecções por saldo em aberto",
+            title=f"Top {len(resumo_sel)} Confecções por Saldo em Aberto",
             yaxis_title="Unidades em aberto",
             xaxis_title="",
             template=template_plotly(),
@@ -1612,7 +1654,7 @@ else:
             legend=dict(orientation="h", y=1.12),
             margin=dict(t=70, l=10, r=10, b=10),
         )
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
 
         tabela_pedidos = resumo_sel.rename(
             columns={
@@ -1631,7 +1673,7 @@ else:
                     "Aguardando saldo",
                 ]
             ],
-            width="stretch",
+            use_container_width=True,
             hide_index=True,
             column_config={
                 "Confecção": st.column_config.TextColumn("Confecção", width="large"),
@@ -1651,7 +1693,7 @@ else:
             },
         )
 
-    with st.expander("📋 Detalhar pedidos em aberto (rastreabilidade)"):
+    with st.expander("📋 Detalhar Todos os Pedidos em Aberto"):
         detalhe_pedidos = pedidos_sel.sort_values(
             ["Dt Entrega", "SaldoAberto"], ascending=[True, False]
         )
@@ -1671,7 +1713,7 @@ else:
             detalhe_pedidos[
                 [c for c in colunas_detalhe if c in detalhe_pedidos.columns]
             ],
-            width="stretch",
+            use_container_width=True,
             hide_index=True,
             column_config={
                 "Confecção": st.column_config.TextColumn("Confecção", width="medium"),
@@ -1698,7 +1740,7 @@ else:
 # ==================== 4. COMPRA SUGERIDA ====================
 
 st.markdown(
-    '<div class="db-secao">🛒 Compra sugerida e categoria da confecção</div>',
+    '<div class="db-secao">🛒 Compra Sugerida e Alocação Estratégica</div>',
     unsafe_allow_html=True,
 )
 
@@ -1726,11 +1768,11 @@ else:
             hole=0.45,
             color="Categoria",
             color_discrete_map=CORES_CATEGORIA,
-            title="Compra sugerida por categoria",
+            title="Distribuição da Compra por Categoria",
             template=template_plotly(),
         )
         fig.update_layout(height=380, margin=dict(t=55, l=10, r=10, b=10))
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
 
     with c2:
         k_cat1, k_cat2, k_cat3 = st.columns(3)
@@ -1755,11 +1797,10 @@ else:
                     unsafe_allow_html=True,
                 )
         st.caption(
-            "**Já produziu**: código do item consta no histórico da confecção "
-            "(produção e/ou pedidos com Qtd Ret > 0). "
-            "**Semelhante**: mesma categoria de produto e mesmo tamanho e/ou mesma "
-            "Operação Produtiva. A confecção sugerida é a de maior capacidade entre "
-            "as compatíveis, priorizando o código exato."
+            "• **Já produziu**: código do item já fabricado anteriormente pela confecção.<br>"
+            "• **Semelhante**: mesma categoria e mesmo tamanho ou operação.<br>"
+            "• **Sem histórico**: nenhuma confecção compatível encontrada no histórico.",
+            unsafe_allow_html=True,
         )
 
     if compra_sel.empty:
@@ -1782,7 +1823,7 @@ else:
                     "Motivo",
                 ]
             ],
-            width="stretch",
+            use_container_width=True,
             hide_index=True,
             column_config={
                 "Categoria": st.column_config.TextColumn("Categoria", width="small"),
@@ -1812,7 +1853,7 @@ else:
             },
         )
 
-        with st.expander("🔎 Ver todas as confecções compatíveis por item"):
+        with st.expander("🔎 Ver Matriz Completa de Compatibilidade"):
             if detalhe_compra.empty:
                 st.caption("Sem detalhe de compatibilidade para os itens atuais.")
             else:
@@ -1835,7 +1876,7 @@ else:
                             "Capacidade semanal",
                         ]
                     ],
-                    width="stretch",
+                    use_container_width=True,
                     hide_index=True,
                     column_config={
                         "Código": st.column_config.TextColumn("Código", width="small"),
@@ -1863,9 +1904,9 @@ else:
                     },
                 )
 
-# ==================== 5. EXPORTAÇÃO ====================
+# ==================== 5. EXPORTAÇÃO DE RELATÓRIOS ====================
 
-st.markdown("### 📥 Exportar a projeção")
+st.markdown("### 📥 Exportação de Dados")
 
 colunas_compra = [
     "Categoria",
@@ -1917,17 +1958,17 @@ data_arquivo = pd.Timestamp.today().strftime("%Y-%m-%d")
 c1, c2 = st.columns(2)
 with c1:
     st.download_button(
-        "📥 Baixar CSV — compra sugerida",
+        "📥 Baixar CSV — Compra Sugerida",
         data=compra_export.to_csv(index=False, encoding="utf-8-sig"),
         file_name=f"compra_sugerida_confeccao_{data_arquivo}.csv",
         mime="text/csv",
-        width="stretch",
+        use_container_width=True,
     )
 with c2:
     st.download_button(
-        "📊 Baixar Excel — projeção completa",
+        "📊 Baixar Excel — Projeção Completa",
         data=buffer.getvalue(),
         file_name=f"projecao_confeccao_{data_arquivo}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        width="stretch",
+        use_container_width=True,
     )
