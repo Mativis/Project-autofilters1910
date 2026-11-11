@@ -767,7 +767,8 @@ with st.sidebar:
 
 capacidades = resumo_capacidade(producao, semanas_janela)
 pedidos_resumo = resumo_pedidos(pedidos)
-compra, detalhe_compra = classificar_compra(estoque, montar_historico(producao, pedidos), capacidades)
+historico = montar_historico(producao, pedidos)
+compra, detalhe_compra = classificar_compra(estoque, historico, capacidades)
 consolidado = montar_consolidado(capacidades, pedidos_resumo, compra)
 
 # ==================== KPIs ====================
@@ -888,7 +889,452 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ==================== 1. CAPACIDADE SEMANAL ====================
+# ==================== 1. FICHA DA CONFECÇÃO ====================
+
+st.markdown(
+    '<div class="db-secao">🪪 Ficha de indicadores por confecção</div>',
+    unsafe_allow_html=True,
+)
+
+# Ordena as opções pelo saldo em aberto para abrir na confecção mais crítica.
+saldo_por_confeccao = (
+    dict(zip(consolidado["Confecção"], consolidado["Saldo aberto"]))
+    if not consolidado.empty
+    else {}
+)
+opcoes_ficha = list(confeccoes_sel)
+if somente_com_aberto:
+    opcoes_ficha = [
+        nome for nome in opcoes_ficha if saldo_por_confeccao.get(nome, 0) > 0
+    ]
+opcoes_ficha = sorted(
+    opcoes_ficha,
+    key=lambda nome: (-float(saldo_por_confeccao.get(nome, 0) or 0), _norm(nome)),
+)
+
+if not opcoes_ficha:
+    st.info("Nenhuma confecção disponível com os filtros atuais.")
+else:
+    confeccao_ficha = st.selectbox(
+        "Escolha a confecção",
+        options=opcoes_ficha,
+        key="pc_ficha_confeccao",
+        help=(
+            "Reúne capacidade, pedidos em aberto, compra sugerida e histórico "
+            "de itens já produzidos por esta confecção."
+        ),
+    )
+
+    chave_ficha = _norm(confeccao_ficha)
+    registro = consolidado[consolidado["Confecção"] == confeccao_ficha]
+    registro = registro.iloc[0] if not registro.empty else None
+    cap_ficha = capacidades[capacidades["FornecedorChave"] == chave_ficha]
+    cap_ficha = cap_ficha.iloc[0] if not cap_ficha.empty else None
+    historico_ficha = (
+        historico[historico["FornecedorChave"] == chave_ficha].copy()
+        if historico is not None and not historico.empty
+        else pd.DataFrame()
+    )
+
+    if registro is None:
+        st.info("Sem indicadores consolidados para esta confecção.")
+    else:
+        capacidade_ficha = registro["Capacidade semanal"]
+        tem_historico = (
+            pd.notna(capacidade_ficha) and float(capacidade_ficha) > 0
+        )
+        n_itens_historico = (
+            int(historico_ficha["Codigo"].nunique())
+            if not historico_ficha.empty
+            else 0
+        )
+
+        st.markdown(
+            f"#### {confeccao_ficha} · "
+            + (
+                "🟢 com histórico de produção"
+                if tem_historico
+                else "⚪ sem histórico de produção"
+            )
+        )
+
+        e1, e2, e3, e4 = st.columns(4)
+        with e1:
+            st.markdown(
+                card(
+                    "Capacidade semanal",
+                    fmt_num(capacidade_ficha),
+                    (
+                        f"média de {int(registro['Semanas observadas'])} semana(s)"
+                        if tem_historico
+                        else "sem produção registrada"
+                    ),
+                    "#2e7d32",
+                ),
+                unsafe_allow_html=True,
+            )
+        with e2:
+            st.markdown(
+                card(
+                    "Pedidos em aberto",
+                    fmt_num(registro["Saldo aberto"]),
+                    f"{fmt_num(registro['Pedidos abertos'])} pedido(s)",
+                    "#ef6c00",
+                ),
+                unsafe_allow_html=True,
+            )
+        with e3:
+            st.markdown(
+                card(
+                    "Compra sugerida atribuída",
+                    fmt_num(registro["Compra atribuída"]),
+                    f"{fmt_num(registro['Itens sugeridos'])} item(ns)",
+                    "#b71c1c",
+                ),
+                unsafe_allow_html=True,
+            )
+        with e4:
+            semanas_ficha = registro["Semanas p/ absorver"]
+            st.markdown(
+                card(
+                    "Semanas p/ absorver",
+                    (
+                        fmt_num(semanas_ficha)
+                        if pd.notna(semanas_ficha)
+                        else "—"
+                    ),
+                    "pedidos abertos + compra atribuída",
+                    "#764ba2",
+                ),
+                unsafe_allow_html=True,
+            )
+
+        p1, p2, p3, p4 = st.columns(4)
+        with p1:
+            st.markdown(
+                card(
+                    "Produção no período",
+                    fmt_num(registro["Produção no período"]),
+                    "soma dos retornos do arquivo",
+                    "#3949ab",
+                ),
+                unsafe_allow_html=True,
+            )
+        with p2:
+            melhor = cap_ficha["MelhorSemana"] if cap_ficha is not None else np.nan
+            st.markdown(
+                card(
+                    "Melhor semana",
+                    fmt_num(melhor),
+                    "maior volume semanal",
+                    "#00897b",
+                ),
+                unsafe_allow_html=True,
+            )
+        with p3:
+            ultima = (
+                _periodo(cap_ficha["UltimaSemana"])
+                if cap_ficha is not None
+                else "—"
+            )
+            st.markdown(
+                card(
+                    "Última semana",
+                    ultima,
+                    "semana mais recente",
+                    "#5e35b1",
+                ),
+                unsafe_allow_html=True,
+            )
+        with p4:
+            st.markdown(
+                card(
+                    "Itens no histórico",
+                    fmt_num(n_itens_historico),
+                    "códigos já produzidos",
+                    "#546e7a",
+                ),
+                unsafe_allow_html=True,
+            )
+
+        if cap_ficha is not None:
+            st.caption(f"**Tipos produzidos:** {cap_ficha['Tipos']}")
+
+        g1, g2 = st.columns([1.4, 1])
+        with g1:
+            semanal_ficha = (
+                producao[producao["FornecedorChave"] == chave_ficha]
+                .groupby("Semana", as_index=False)
+                .agg(Qtd=("Qtd", "sum"), Itens=("Codigo", "nunique"))
+                .sort_values("Semana")
+            )
+            if semanal_ficha.empty:
+                st.info(
+                    "Sem produção registrada para esta confecção no arquivo atual."
+                )
+            else:
+                semanal_ficha["Rotulo"] = semanal_ficha["Semana"].map(fmt_data)
+                fig = px.bar(
+                    semanal_ficha,
+                    x="Rotulo",
+                    y="Qtd",
+                    text="Qtd",
+                    labels={"Rotulo": "", "Qtd": "Unidades produzidas"},
+                    title="Produção por semana",
+                    template=template_plotly(),
+                )
+                fig.update_traces(
+                    texttemplate="%{text:,.0f}",
+                    textposition="outside",
+                    marker_color="#3949ab",
+                )
+                if tem_historico:
+                    fig.add_hline(
+                        y=float(capacidade_ficha),
+                        line_dash="dot",
+                        line_color="#2e7d32",
+                        annotation_text="Média semanal",
+                        annotation_position="top left",
+                    )
+                fig.update_layout(
+                    height=360,
+                    showlegend=False,
+                    margin=dict(t=55, l=10, r=10, b=10),
+                )
+                st.plotly_chart(fig, width="stretch")
+
+        with g2:
+            dados_bucket = pd.DataFrame(
+                {
+                    "Classificação": list(BUCKETS_ORDEM),
+                    "Unidades": [
+                        float(registro[bucket]) for bucket in BUCKETS_ORDEM
+                    ],
+                }
+            )
+            total_buckets = float(dados_bucket["Unidades"].sum())
+            if total_buckets <= 0:
+                st.info("Sem pedidos em aberto para esta confecção.")
+            else:
+                fig = px.bar(
+                    dados_bucket,
+                    x="Unidades",
+                    y="Classificação",
+                    orientation="h",
+                    color="Classificação",
+                    color_discrete_map=CORES_BUCKET,
+                    text="Unidades",
+                    title="Pedidos em aberto por classificação",
+                    template=template_plotly(),
+                )
+                fig.update_traces(
+                    texttemplate="%{text:,.0f}", textposition="outside"
+                )
+                fig.update_layout(
+                    height=360,
+                    showlegend=False,
+                    margin=dict(t=55, l=10, r=10, b=10),
+                    xaxis_title="Unidades",
+                    yaxis_title="",
+                )
+                st.plotly_chart(fig, width="stretch")
+
+        pedidos_ficha = pd.DataFrame()
+        if pedidos is not None and not pedidos.empty:
+            pedidos_ficha = pedidos[
+                (pedidos["Confecção"] == confeccao_ficha)
+                & (pedidos["SaldoAberto"] > 0)
+            ].copy()
+
+        with st.expander(
+            f"📋 Pedidos em aberto desta confecção ({len(pedidos_ficha)})"
+        ):
+            if pedidos_ficha.empty:
+                st.caption(
+                    "Nenhum pedido com saldo em aberto para esta confecção."
+                )
+            else:
+                detalhe_ficha = pedidos_ficha.sort_values(
+                    ["Dt Entrega", "SaldoAberto"],
+                    ascending=[True, False],
+                    na_position="last",
+                )
+                st.dataframe(
+                    detalhe_ficha[
+                        [
+                            coluna
+                            for coluna in (
+                                "Compra",
+                                "Status",
+                                "Classificacao",
+                                "Cód Confec",
+                                "Confeccionado",
+                                "Qtd",
+                                "QtdRet",
+                                "SaldoAberto",
+                                "Dt Entrega",
+                            )
+                            if coluna in detalhe_ficha.columns
+                        ]
+                    ],
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "Compra": st.column_config.TextColumn(
+                            "Pedido", width="small"
+                        ),
+                        "Status": st.column_config.TextColumn(
+                            "Status", width="small"
+                        ),
+                        "Classificacao": st.column_config.TextColumn(
+                            "Classificação", width="small"
+                        ),
+                        "Cód Confec": st.column_config.TextColumn(
+                            "Código", width="small"
+                        ),
+                        "Confeccionado": st.column_config.TextColumn(
+                            "Item", width="large"
+                        ),
+                        "Qtd": st.column_config.NumberColumn(
+                            "Qtd", format="%d"
+                        ),
+                        "QtdRet": st.column_config.NumberColumn(
+                            "Qtd retornada", format="%d"
+                        ),
+                        "SaldoAberto": st.column_config.NumberColumn(
+                            "Saldo em aberto", format="%d"
+                        ),
+                        "Dt Entrega": st.column_config.DateColumn(
+                            "Dt Entrega", format="DD/MM/YYYY"
+                        ),
+                    },
+                )
+
+        compra_ficha = (
+            compra[compra["Confecção sugerida"] == confeccao_ficha].copy()
+            if compra is not None and not compra.empty
+            else pd.DataFrame()
+        )
+
+        with st.expander(
+            f"🛒 Compra sugerida desta confecção ({len(compra_ficha)})"
+        ):
+            if compra_ficha.empty:
+                st.caption(
+                    "Nenhum item de compra sugerida atribuído a esta confecção."
+                )
+            else:
+                st.dataframe(
+                    compra_ficha[
+                        [
+                            "Categoria",
+                            "Marca",
+                            "Código",
+                            "Descrição",
+                            "Tamanho",
+                            "Saldo 5",
+                            "Teto",
+                            "Compra Sugerida",
+                            "Semanas estimadas",
+                            "Motivo",
+                        ]
+                    ],
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "Categoria": st.column_config.TextColumn(
+                            "Categoria", width="small"
+                        ),
+                        "Marca": st.column_config.TextColumn(
+                            "Marca", width="small"
+                        ),
+                        "Código": st.column_config.TextColumn(
+                            "Código", width="small"
+                        ),
+                        "Descrição": st.column_config.TextColumn(
+                            "Descrição", width="large"
+                        ),
+                        "Tamanho": st.column_config.TextColumn(
+                            "Tamanho", width="small"
+                        ),
+                        "Saldo 5": st.column_config.NumberColumn(
+                            "Saldo 5", format="%d"
+                        ),
+                        "Teto": st.column_config.NumberColumn(
+                            'Tec Faz "x" Confec', format="%d"
+                        ),
+                        "Compra Sugerida": st.column_config.NumberColumn(
+                            "Compra Sugerida", format="%d"
+                        ),
+                        "Semanas estimadas": st.column_config.NumberColumn(
+                            "Semanas estimadas", format="%d"
+                        ),
+                        "Motivo": st.column_config.TextColumn(
+                            "Motivo", width="medium"
+                        ),
+                    },
+                )
+
+        with st.expander(
+            f"🧵 Itens já produzidos por esta confecção ({n_itens_historico})"
+        ):
+            if historico_ficha.empty:
+                st.caption(
+                    "Esta confecção ainda não tem itens no histórico de produção."
+                )
+            else:
+                itens_ficha = (
+                    historico_ficha.groupby(
+                        ["Codigo", "Item", "Tipo", "Operacao", "Tamanho"],
+                        as_index=False,
+                    )
+                    .agg(
+                        Qtd=("Qtd", "sum"),
+                        Origem=(
+                            "Origem",
+                            lambda serie: ", ".join(
+                                sorted({str(v) for v in serie if str(v).strip()})
+                            ),
+                        ),
+                    )
+                    .sort_values("Qtd", ascending=False)
+                    .rename(columns={"Operacao": "Operação"})
+                )
+                if len(itens_ficha) > 100:
+                    st.caption(
+                        "Mostrando os 100 itens de maior volume "
+                        f"de {fmt_num(len(itens_ficha))} no histórico."
+                    )
+                st.dataframe(
+                    itens_ficha.head(100),
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "Codigo": st.column_config.TextColumn(
+                            "Código", width="small"
+                        ),
+                        "Item": st.column_config.TextColumn(
+                            "Item", width="large"
+                        ),
+                        "Tipo": st.column_config.TextColumn(
+                            "Tipo", width="small"
+                        ),
+                        "Operação": st.column_config.TextColumn(
+                            "Operação", width="medium"
+                        ),
+                        "Tamanho": st.column_config.TextColumn(
+                            "Tamanho", width="small"
+                        ),
+                        "Qtd": st.column_config.NumberColumn(
+                            "Quantidade", format="%d"
+                        ),
+                        "Origem": st.column_config.TextColumn(
+                            "Origem", width="medium"
+                        ),
+                    },
+                )
+
+# ==================== 2. CAPACIDADE SEMANAL ====================
 
 st.markdown(
     '<div class="db-secao">⚡ Capacidade semanal por confecção</div>',
@@ -985,7 +1431,7 @@ with st.expander("📅 Ver produção por semana"):
     )
     st.dataframe(semanal, width="stretch", hide_index=True)
 
-# ==================== 2. RASTREABILIDADE DOS PEDIDOS ====================
+# ==================== 3. RASTREABILIDADE DOS PEDIDOS ====================
 
 st.markdown(
     '<div class="db-secao">🧭 Rastreabilidade dos pedidos em aberto</div>',
@@ -1147,7 +1593,7 @@ else:
             },
         )
 
-# ==================== 3. COMPRA SUGERIDA ====================
+# ==================== 4. COMPRA SUGERIDA ====================
 
 st.markdown(
     '<div class="db-secao">🛒 Compra sugerida e categoria da confecção</div>',
@@ -1315,7 +1761,7 @@ else:
                     },
                 )
 
-# ==================== 4. PROJEÇÃO CONSOLIDADA ====================
+# ==================== 5. PROJEÇÃO CONSOLIDADA ====================
 
 st.markdown(
     '<div class="db-secao">📊 Projeção consolidada por confecção</div>',
@@ -1417,7 +1863,7 @@ else:
         "aparecem como **Sem histórico** e não entram na coluna de compra atribuída."
     )
 
-# ==================== 5. EXPORTAÇÃO ====================
+# ==================== 6. EXPORTAÇÃO ====================
 
 st.markdown("### 📥 Exportar a projeção")
 
