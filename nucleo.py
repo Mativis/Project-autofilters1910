@@ -23,6 +23,13 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from rastreabilidade import (
+    BUCKETS_RASTREABILIDADE,
+    CORES_RASTREABILIDADE,
+    MAPA_STATUS_RASTREABILIDADE,
+    classificar_rastreabilidade,
+)
+
 # ==================== TEMA (claro / escuro) ====================
 
 def tema_escuro():
@@ -235,32 +242,8 @@ def _normalizar_descricao(descricao):
 
 
 # ==================== RASTREABILIDADE DOS PEDIDOS ====================
-
-BUCKETS_RASTREABILIDADE = (
-    "Aguardando envio",
-    "Aguardando produção",
-    "Aguardando saldo",
-)
-
-MAPA_STATUS_RASTREABILIDADE = {
-    "ORCAMENTO": "Aguardando envio",
-    "EM SEPARACAO": "Aguardando envio",
-    "PEDIDO": "Aguardando envio",
-    "PEDIDO C/ FORN": "Aguardando produção",
-    "FAT. PARCIAL": "Aguardando saldo",
-}
-
-CORES_RASTREABILIDADE = {
-    "Aguardando envio": "#667eea",
-    "Aguardando produção": "#ef6c00",
-    "Aguardando saldo": "#2e7d32",
-}
-
-
-def classificar_rastreabilidade(status):
-    """Classifica o status do pedido nas etapas de rastreabilidade."""
-    chave = _normalizar_descricao(status)
-    return MAPA_STATUS_RASTREABILIDADE.get(chave, "Sem classificação")
+# As regras ficam em `rastreabilidade.py` (módulo enxuto, recarregável) e são
+# reexportadas no topo deste arquivo para quem já importava de `nucleo`.
 
 
 def _tamanho_numerico(valor):

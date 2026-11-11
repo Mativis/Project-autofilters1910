@@ -18,16 +18,13 @@ import xlsxwriter
 from datetime import date
 
 from nucleo import (
-    BUCKETS_RASTREABILIDADE,
     COLUNAS_ESTOQUE,
     COLUNAS_PEDIDOS,
     CORES_PRIORIDADE,
-    CORES_RASTREABILIDADE,
     FATOR_URGENCIA_PADRAO,
     ORDEM_PRIORIDADE,
     calcular_prioridade,
     classe_prioridade,
-    classificar_rastreabilidade,
     codigos_saldo2_negativo,
     distribuir_qe,
     fmt_compra,
@@ -41,6 +38,11 @@ from nucleo import (
     sidebar_arquivos,
     tema_escuro,
     texto_dias,
+)
+from rastreabilidade import (
+    BUCKETS_RASTREABILIDADE,
+    CORES_RASTREABILIDADE,
+    classificar_rastreabilidade,
 )
 
 # ==================== TEMA (claro / escuro) ====================

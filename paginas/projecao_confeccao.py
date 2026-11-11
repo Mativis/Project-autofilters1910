@@ -34,12 +34,9 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from nucleo import (
-    BUCKETS_RASTREABILIDADE,
-    CORES_RASTREABILIDADE,
     aplicar_estilo_comum,
     cabecalho,
     card,
-    classificar_rastreabilidade,
     extrair_tamanho,
     fmt_data,
     fmt_num,
@@ -50,6 +47,11 @@ from nucleo import (
     preparar_pedidos,
     sidebar_arquivos,
     template_plotly,
+)
+from rastreabilidade import (
+    BUCKETS_RASTREABILIDADE,
+    CORES_RASTREABILIDADE,
+    classificar_rastreabilidade,
 )
 
 st.set_page_config(
