@@ -836,17 +836,16 @@ chave_janela = "pc_semanas_janela_" + str(hash(dados_producao) & 0xFFFFFFFF)
 valor_persistido = st.session_state.get(chave_janela, max(1, min(8, semanas_disponiveis)))
 if valor_persistido > semanas_disponiveis:
     valor_persistido = max(1, semanas_disponiveis)
-st.session_state[chave_janela] = valor_persistido
+if chave_janela in st.session_state:
+    st.session_state[chave_janela] = valor_persistido
 
 with st.sidebar:
     st.markdown("---")
     st.header("🔍 Filtros")
 
-    semanas_janela = st.number_input(
-        "Janela da média (últimas semanas)",
+    kwargs_janela = dict(
         min_value=1,
         max_value=max(1, semanas_disponiveis),
-        value=valor_persistido,
         step=1,
         key=chave_janela,
         disabled=semanas_disponiveis <= 1,
@@ -854,6 +853,13 @@ with st.sidebar:
             "A capacidade média usa apenas as últimas N semanas observadas no "
             f"arquivo. O arquivo atual tem {semanas_disponiveis} semana(s)."
         ),
+    )
+    if chave_janela not in st.session_state:
+        kwargs_janela["value"] = valor_persistido
+
+    semanas_janela = st.number_input(
+        "Janela da média (últimas semanas)",
+        **kwargs_janela,
     )
     if semanas_disponiveis <= 1:
         st.caption(
@@ -901,6 +907,81 @@ with st.sidebar:
         value=False,
         key="pc_somente_aberto",
     )
+
+    # ---------- Filtros por item ----------
+    st.markdown("---")
+    st.caption("Filtros por item")
+
+    def _opcoes(colunas_por_df):
+        valores = set()
+        for df, col in colunas_por_df:
+            if df is not None and not (isinstance(df, pd.DataFrame) and df.empty) and col in df.columns:
+                valores.update(str(v) for v in df[col].dropna().unique() if str(v).strip())
+        return sorted(valores, key=lambda v: _norm(v))
+
+    opcoes_tipo = _opcoes([(producao, "Tipo"), (pedidos, "Tipo"), (estoque, "Tipo")])
+    tipos_sel = st.multiselect(
+        "Tipo de confecção",
+        options=opcoes_tipo,
+        default=opcoes_tipo,
+        key="pc_tipos",
+    )
+
+    opcoes_tamanho = _opcoes([(producao, "Tamanho"), (pedidos, "Tamanho"), (estoque, "Tamanho")])
+    tamanhos_sel = st.multiselect(
+        "Tamanho",
+        options=opcoes_tamanho,
+        default=opcoes_tamanho,
+        key="pc_tamanhos",
+    )
+
+    opcoes_marca = _opcoes([(producao, "Marca"), (pedidos, "Marca"), (estoque, "Marca")])
+    marcas_sel = st.multiselect(
+        "Marca",
+        options=opcoes_marca,
+        default=opcoes_marca,
+        key="pc_marcas",
+    )
+
+    opcoes_operacao = _opcoes([(producao, "Operacao"), (pedidos, "Operacao"), (estoque, "Operacao")])
+    operacoes_sel = st.multiselect(
+        "Operação produtiva",
+        options=opcoes_operacao,
+        default=opcoes_operacao,
+        key="pc_operacoes",
+    )
+
+# ==================== APLICAÇÃO DOS FILTROS POR ITEM ====================
+
+if producao is not None and not (isinstance(producao, pd.DataFrame) and producao.empty):
+    if "Tipo" in producao.columns and tipos_sel:
+        producao = producao[producao["Tipo"].astype(str).isin(tipos_sel)].copy()
+    if "Tamanho" in producao.columns and tamanhos_sel:
+        producao = producao[producao["Tamanho"].astype(str).isin(tamanhos_sel)].copy()
+    if "Marca" in producao.columns and marcas_sel:
+        producao = producao[producao["Marca"].astype(str).isin(marcas_sel)].copy()
+    if "Operacao" in producao.columns and operacoes_sel:
+        producao = producao[producao["Operacao"].astype(str).isin(operacoes_sel)].copy()
+
+if pedidos is not None and not (isinstance(pedidos, pd.DataFrame) and pedidos.empty):
+    if "Tipo" in pedidos.columns and tipos_sel:
+        pedidos = pedidos[pedidos["Tipo"].astype(str).isin(tipos_sel)].copy()
+    if "Tamanho" in pedidos.columns and tamanhos_sel:
+        pedidos = pedidos[pedidos["Tamanho"].astype(str).isin(tamanhos_sel)].copy()
+    if "Marca" in pedidos.columns and marcas_sel:
+        pedidos = pedidos[pedidos["Marca"].astype(str).isin(marcas_sel)].copy()
+    if "Operacao" in pedidos.columns and operacoes_sel:
+        pedidos = pedidos[pedidos["Operacao"].astype(str).isin(operacoes_sel)].copy()
+
+if estoque is not None and not (isinstance(estoque, pd.DataFrame) and estoque.empty):
+    if "Tipo" in estoque.columns and tipos_sel:
+        estoque = estoque[estoque["Tipo"].astype(str).isin(tipos_sel)].copy()
+    if "Tamanho" in estoque.columns and tamanhos_sel:
+        estoque = estoque[estoque["Tamanho"].astype(str).isin(tamanhos_sel)].copy()
+    if "Marca" in estoque.columns and marcas_sel:
+        estoque = estoque[estoque["Marca"].astype(str).isin(marcas_sel)].copy()
+    if "Operacao" in estoque.columns and operacoes_sel:
+        estoque = estoque[estoque["Operacao"].astype(str).isin(operacoes_sel)].copy()
 
 # ==================== PROCESSAMENTO E MATRIZ DE DADOS ====================
 
