@@ -2108,8 +2108,17 @@ COMPONENTE_IMPRESSAO_PROJ = """
 """
 
 
-def gerar_html_impressao_projecao():
-    kpis_html = ""
+def gerar_html_impressao_projecao(orientacao="paisagem"):
+    paisagem = orientacao.startswith("Paisagem") or orientacao == "paisagem"
+    page_size = "A4 landscape" if paisagem else "A4 portrait"
+    kpi_cols = "repeat(6, 1fr)" if paisagem else "repeat(3, 1fr)"
+    font_tab = "9.5px" if paisagem else "9px"
+    CSS = CSS_IMPRESSAO_PROJ.replace("A4 landscape", page_size).replace(
+        "grid-template-columns: repeat(6, 1fr);", f"grid-template-columns: {kpi_cols};"
+    ).replace("font-size: 9.5px;", f"font-size: {font_tab};")
+    ...
+    # use CSS instead of CSS_IMPRESSAO_PROJ in the document
+
     if not consolidado.empty:
         total_cap = float(consolidado["Capacidade semanal"].sum()) if "Capacidade semanal" in consolidado.columns else 0.0
         total_aberto = float(consolidado["Saldo aberto"].sum()) if "Saldo aberto" in consolidado.columns else 0.0
@@ -2164,7 +2173,7 @@ def gerar_html_impressao_projecao():
     html_doc = (
         "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='utf-8'>"
         f"<title>Projeção por Confecção — {data_arquivo}</title>"
-        "<style>" + CSS_IMPRESSAO_PROJ + "</style></head><body>"
+        "<style>" + CSS + "</style></head><body>"
         "<div class='barra'>"
         "<button class='botao' onclick='window.print()'>🖨️ Imprimir / Salvar PDF</button>"
         "<span class='dica'>Dica: em “Mais definições”, escolha <b>Paisagem</b> e marque "
@@ -2182,7 +2191,14 @@ def gerar_html_impressao_projecao():
     return html_doc
 
 
-html_proj = gerar_html_impressao_projecao()
+orientacao_imp = st.selectbox(
+    "Orientação da impressão",
+    ["Paisagem (horizontal)", "Retrato (vertical)"],
+    key="pc_orientacao_impressao",
+    help="Paisagem é recomendada para tabelas largas; retrato para relatórios verticais.",
+)
+
+html_proj = gerar_html_impressao_projecao(orientacao_imp)
 b64_proj = base64.b64encode(html_proj.encode("utf-8")).decode("ascii")
 
 col_imp1, col_imp2 = st.columns(2)
