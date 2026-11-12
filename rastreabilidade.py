@@ -36,6 +36,27 @@ CORES_RASTREABILIDADE = {
 
 SEM_CLASSIFICACAO = "Sem classificação"
 
+# Fundos suaves (impressão/Excel) para o selo de cada etapa
+CORES_SUAVES_RASTREABILIDADE = {
+    "Aguardando envio": "#eef0ff",
+    "Aguardando produção": "#fff3e0",
+    "Aguardando saldo": "#e8f5e9",
+    SEM_CLASSIFICACAO: "#f1f3f5",
+}
+
+# Sufixo de classe CSS de cada etapa (ex.: kb-stage-dot.envio)
+CLASSES_RASTREABILIDADE = {
+    "Aguardando envio": "envio",
+    "Aguardando produção": "producao",
+    "Aguardando saldo": "saldo",
+    SEM_CLASSIFICACAO: "sem-classificacao",
+}
+
+
+def classe_rastreabilidade(etapa):
+    """Sufixo de classe CSS da etapa (para os selos de classificação)."""
+    return CLASSES_RASTREABILIDADE.get(etapa, "sem-classificacao")
+
 
 def classificar_rastreabilidade(status):
     """Classifica o status do pedido em uma das etapas de rastreabilidade.

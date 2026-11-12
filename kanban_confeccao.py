@@ -42,6 +42,9 @@ from nucleo import (
 from rastreabilidade import (
     BUCKETS_RASTREABILIDADE,
     CORES_RASTREABILIDADE,
+    CORES_SUAVES_RASTREABILIDADE,
+    SEM_CLASSIFICACAO,
+    classe_rastreabilidade,
     classificar_rastreabilidade,
 )
 
@@ -290,6 +293,31 @@ def pagina_kanban():
                 font-variant-numeric: tabular-nums;
             }
 
+            .kb-stage {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.4rem;
+                padding: 0.18rem 0.6rem;
+                border-radius: 999px;
+                background: var(--kb-chip-bg);
+                border: 1px solid var(--kb-chip-border);
+                color: var(--kb-text);
+                font-size: 0.72rem;
+                font-weight: 600;
+                white-space: nowrap;
+            }
+            .kb-stage-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                display: inline-block;
+                flex: 0 0 auto;
+            }
+            .kb-stage-dot.envio { background: #667eea; }
+            .kb-stage-dot.producao { background: #ef6c00; }
+            .kb-stage-dot.saldo { background: #2e7d32; }
+            .kb-stage-dot.sem-classificacao { background: #9e9e9e; }
+
             .kb-info-box {
                 background: linear-gradient(90deg, var(--kb-info-from) 0%, var(--kb-info-to) 100%);
                 color: var(--kb-info-text);
@@ -350,6 +378,7 @@ def pagina_kanban():
                    - **Quantidade** (coluna `Saldo`)
                    - **Q.E** (Quantidade Emergencial, calculada com o `Saldo 2` do Estoque)
                    - **Data de entrega** (coluna `Dt Entrega`)
+                   - **Classificação** (etapa do fluxo: aguardando envio, produção ou saldo, conforme o `Status`)
                    - **Prioridade** (calculada pela data de entrega)
 
                 ### Regra de prioridade (em relação ao dia de hoje):
@@ -612,6 +641,8 @@ def pagina_kanban():
             prio = html.escape(str(row["Prioridade"]))
             prio_txt = ("⚠️ " if row["Prioridade"] == "Atrasado" else "") + prio
             dias_txt = html.escape(texto_dias(row["Dt Entrega"]))
+            etapa = str(row.get("Classificacao", SEM_CLASSIFICACAO))
+            etapa_cls = classe_rastreabilidade(etapa)
 
             linhas.append(
                 f'<tr class="row-{cls}">'
@@ -622,6 +653,8 @@ def pagina_kanban():
                 f'<td class="kb-num">{qtd}</td>'
                 f'<td class="kb-num kb-qe">{qe}</td>'
                 f'<td class="kb-date" title="{dias_txt}">{data}</td>'
+                f'<td><span class="kb-stage">'
+                f'<span class="kb-stage-dot {etapa_cls}"></span>{html.escape(etapa)}</span></td>'
                 f'<td><span class="kb-badge {cls}">{prio_txt}</span></td>'
                 "</tr>"
             )
@@ -637,6 +670,7 @@ def pagina_kanban():
             '<th style="text-align:right">Quantidade</th>'
             '<th style="text-align:right" title="Quantidade Emergencial">Q.E</th>'
             "<th>Data de Entrega</th>"
+            "<th>Classificação</th>"
             "<th>Prioridade</th>"
             "</tr></thead>"
             "<tbody>" + "".join(linhas) + "</tbody>"
@@ -644,7 +678,7 @@ def pagina_kanban():
             f'<td colspan="4">Total ({len(df_col)} item(ns))</td>'
             f'<td class="kb-num">{fmt_num(df_col["Saldo"].sum())}</td>'
             f'<td class="kb-num kb-qe">{fmt_num(df_col["Q.E"].sum())}</td>'
-            '<td colspan="2"></td>'
+            '<td colspan="3"></td>'
             "</tr></tfoot>"
             "</table></div>"
         )
@@ -737,6 +771,19 @@ def pagina_kanban():
         .badge.alta { background: #f44336; }
         .badge.media { background: #ff9800; }
         .badge.baixa { background: #4caf50; }
+        .stage {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 700;
+            white-space: nowrap;
+            border: 1px solid rgba(0, 0, 0, 0.06);
+        }
+        .stage.envio { background: #eef0ff; color: #3f51b5; }
+        .stage.producao { background: #fff3e0; color: #b25c00; }
+        .stage.saldo { background: #e8f5e9; color: #1b5e20; }
+        .stage.sem-classificacao { background: #f1f3f5; color: #5a6172; }
         tfoot td { font-weight: 800; background: #f8fafd; }
         @media print {
             body { background: #ffffff; padding: 0; }
@@ -804,12 +851,19 @@ def pagina_kanban():
             n_media = int(contagem.get("Média", 0))
             n_baixa = int(contagem.get("Baixa", 0))
             total_un = fmt_num(d["Saldo"].sum())
+            etapas = d["Classificacao"].value_counts()
+            etapas_txt = " &nbsp;·&nbsp; ".join(
+                f"{html.escape(etapa)}: <b>{int(etapas.get(etapa, 0))}</b>"
+                for etapa in BUCKETS_RASTREABILIDADE
+            )
 
             linhas = []
             for _, row in d.iterrows():
                 prio_val = str(row["Prioridade"])
                 cls = classe_prioridade(prio_val)
                 prio_txt = html.escape(("⚠️ " if prio_val == "Atrasado" else "") + prio_val)
+                etapa = str(row.get("Classificacao", SEM_CLASSIFICACAO))
+                etapa_cls = classe_rastreabilidade(etapa)
                 linhas.append(
                     "<tr>"
                     f'<td>{html.escape(fmt_compra(row["Compra"]))}</td>'
@@ -820,6 +874,7 @@ def pagina_kanban():
                     f'<td class="num qe">{fmt_num(row["Q.E"])}</td>'
                     f'<td class="dt">{fmt_data(row["Dt Entrega"])}'
                     f'<span class="dias">{html.escape(texto_dias(row["Dt Entrega"]))}</span></td>'
+                    f'<td><span class="stage {etapa_cls}">{html.escape(etapa)}</span></td>'
                     f'<td><span class="badge {cls}">{prio_txt}</span></td>'
                     "</tr>"
                 )
@@ -829,14 +884,14 @@ def pagina_kanban():
                 "<thead><tr>"
                 "<th>Pedido</th><th>Cód Confec</th><th>Descrição</th><th>Confecção</th>"
                 '<th class="num-h">Quantidade</th><th class="num-h">Q.E</th>'
-                "<th>Data de Entrega</th><th>Prioridade</th>"
+                "<th>Data de Entrega</th><th>Classificação</th><th>Prioridade</th>"
                 "</tr></thead>"
                 "<tbody>" + "".join(linhas) + "</tbody>"
                 "<tfoot><tr>"
                 f'<td colspan="4">Total ({len(d)} item(ns))</td>'
                 f'<td class="num">{total_un}</td>'
                 f'<td class="num qe">{fmt_num(d["Q.E"].sum())}</td>'
-                '<td colspan="2"></td>'
+                '<td colspan="3"></td>'
                 "</tr></tfoot>"
                 "</table>"
             )
@@ -848,6 +903,10 @@ def pagina_kanban():
                 '<p class="resumo-linha">'
                 f'⚠️ Atrasado: <b>{n_atrasado}</b> &nbsp;·&nbsp; 🔴 Alta: <b>{n_alta}</b> '
                 f'&nbsp;·&nbsp; 🟠 Média: <b>{n_media}</b> &nbsp;·&nbsp; 🟢 Baixa: <b>{n_baixa}</b>'
+                "</p>"
+                '<p class="resumo-linha">'
+                f'🧭 {etapas_txt} &nbsp;·&nbsp; ↩️ Retorno: <b>{fmt_num(d["QtdRet"].sum())}</b> '
+                f'de <b>{fmt_num(d["Qtd"].sum())}</b> un.'
                 "</p>"
                 + tabela
                 + "</section>"
@@ -1139,6 +1198,35 @@ def pagina_kanban():
             )
             for p, cor in CORES_PRIORIDADE.items()
         }
+        f_legenda_etapa = {
+            etapa: workbook.add_format(
+                {
+                    "font_name": "Calibri",
+                    "bold": True,
+                    "font_size": 10,
+                    "font_color": cor,
+                }
+            )
+            for etapa, cor in CORES_RASTREABILIDADE.items()
+        }
+        f_legenda_etapa[SEM_CLASSIFICACAO] = workbook.add_format(
+            {
+                "font_name": "Calibri",
+                "bold": True,
+                "font_size": 10,
+                "font_color": "#5a6172",
+            }
+        )
+        f_badge_etapa = {
+            etapa: base(
+                CORES_SUAVES_RASTREABILIDADE.get(etapa, "#f1f3f5"),
+                {"align": "center", "bold": True, "font_size": 9, "font_color": cor},
+            )
+            for etapa, cor in {
+                **CORES_RASTREABILIDADE,
+                SEM_CLASSIFICACAO: "#5a6172",
+            }.items()
+        }
 
         f_total_rotulo = workbook.add_format(
             {
@@ -1208,21 +1296,22 @@ def pagina_kanban():
             (4, 4, 12),
             (5, 5, 11),
             (6, 6, 16),
-            (7, 7, 14),
+            (7, 7, 18),
+            (8, 8, 14),
         ]
         for ini, fim, larg in larguras:
             ws.set_column(ini, fim, larg)
 
         # ---------- Cabeçalho da folha ----------
         ws.set_row(0, 30)
-        ws.merge_range(0, 0, 0, 7, f"📌 Kanban de Confecção — {confeccao}", f_titulo)
+        ws.merge_range(0, 0, 0, 8, f"📌 Kanban de Confecção — {confeccao}", f_titulo)
 
         ws.set_row(1, 18)
         ws.merge_range(
             1,
             0,
             1,
-            7,
+            8,
             f"Itens do Estoque localizados nos Pedidos pelo Cód Confec  ·  "
             f"Data de referência: {date.today().strftime('%d/%m/%Y')}  ·  "
             f"{n_linhas} pedido(s)  ·  {fmt_num(df_col['Saldo'].sum())} unidade(s)  ·  "
@@ -1240,10 +1329,20 @@ def pagina_kanban():
             legenda += [f_legenda_prio[prio], f"   {prefixo}{prio}: {int(contagem.get(prio, 0))}"]
         ws.write_rich_string(2, 0, *legenda, f_legenda_celula)
 
-        ws.set_row(3, 6)
+        ws.set_row(3, 18)
+        etapas = df_col["Classificacao"].value_counts()
+        legenda_etapas = ["Classificação:"]
+        for etapa in list(BUCKETS_RASTREABILIDADE) + [SEM_CLASSIFICACAO]:
+            legenda_etapas += [
+                f_legenda_etapa[etapa],
+                f"   {etapa}: {int(etapas.get(etapa, 0))}",
+            ]
+        ws.write_rich_string(3, 0, *legenda_etapas, f_legenda_celula)
+
+        ws.set_row(4, 6)
 
         # ---------- Cabeçalho da tabela ----------
-        linha_head = 4
+        linha_head = 5
         ws.set_row(linha_head, 22)
         ws.write(linha_head, 0, "PEDIDO", f_head)
         ws.write(linha_head, 1, "CÓD CONFEC", f_head_centro)
@@ -1252,7 +1351,8 @@ def pagina_kanban():
         ws.write(linha_head, 4, "QUANTIDADE", f_head_dir)
         ws.write(linha_head, 5, "Q.E", f_head_qe)
         ws.write(linha_head, 6, "DATA DE ENTREGA", f_head_centro)
-        ws.write(linha_head, 7, "PRIORIDADE", f_head_centro)
+        ws.write(linha_head, 7, "CLASSIFICAÇÃO", f_head_centro)
+        ws.write(linha_head, 8, "PRIORIDADE", f_head_centro)
 
         # ---------- Linhas ----------
         for i, (_, row) in enumerate(linhas):
@@ -1292,7 +1392,11 @@ def pagina_kanban():
                 ws.write_datetime(r, 6, pd.Timestamp(dt).to_pydatetime(), fmt_data_cell)
 
             texto_prio = ("⚠️ " if prio == "Atrasado" else "") + prio
-            ws.write(r, 7, texto_prio, f_badge[prio])
+            etapa = str(row.get("Classificacao", SEM_CLASSIFICACAO))
+            if etapa not in f_badge_etapa:
+                etapa = SEM_CLASSIFICACAO
+            ws.write(r, 7, etapa, f_badge_etapa[etapa])
+            ws.write(r, 8, texto_prio, f_badge[prio])
 
         # ---------- Total ----------
         linha_total = linha_head + 1 + n_linhas
@@ -1302,10 +1406,10 @@ def pagina_kanban():
         )
         ws.write_number(linha_total, 4, float(df_col["Saldo"].sum()), f_total_num)
         ws.write_number(linha_total, 5, float(df_col["Q.E"].sum()), f_total_qe)
-        ws.merge_range(linha_total, 6, linha_total, 7, "", f_total_vazio)
+        ws.merge_range(linha_total, 6, linha_total, 8, "", f_total_vazio)
 
         # ---------- Aparência / impressão ----------
-        ws.autofilter(linha_head, 0, linha_total - 1, 7)
+        ws.autofilter(linha_head, 0, linha_total - 1, 8)
         ws.freeze_panes(linha_head + 1, 0)
         ws.hide_gridlines(2)
         ws.set_landscape()
@@ -1313,7 +1417,7 @@ def pagina_kanban():
         ws.fit_to_pages(1, 0)
         ws.repeat_rows(linha_head)
         ws.set_margins(0.4, 0.4, 0.5, 0.4)
-        ws.print_area(0, 0, linha_total, 7)
+        ws.print_area(0, 0, linha_total, 8)
         ws.set_zoom(90)
 
         workbook.close()
