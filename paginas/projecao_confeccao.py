@@ -22,6 +22,7 @@ A compra sugerida usa a mesma regra da Análise de Estoque
                    tamanho e/ou a mesma Operação Produtiva.
 """
 
+import base64
 import html
 import io
 import math
@@ -1990,5 +1991,208 @@ with c2:
         data=buffer.getvalue(),
         file_name=f"projecao_confeccao_{data_arquivo}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
+
+# ==================== IMPRESSÃO / PDF ====================
+st.markdown("---")
+st.markdown("### 🖨️ Imprimir / Salvar PDF")
+
+
+def _celula_impressao(valor):
+    if valor is None:
+        return "—"
+    try:
+        if pd.isna(valor):
+            return "—"
+    except (TypeError, ValueError):
+        pass
+    if isinstance(valor, (int, np.integer)):
+        return html.escape(fmt_num(int(valor)))
+    if isinstance(valor, (float, np.floating)):
+        return html.escape(fmt_num(valor))
+    if isinstance(valor, pd.Timestamp):
+        return html.escape(fmt_data(valor))
+    return html.escape(str(valor))
+
+
+def _tabela_impressao(df, colunas, max_linhas=None):
+    if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+        return "<p class='vazio'>Sem dados.</p>"
+    cols = [c for c in colunas if c in df.columns]
+    if not cols:
+        cols = list(df.columns)
+    d = df[cols].copy()
+    if max_linhas is not None and len(d) > max_linhas:
+        d = d.head(max_linhas)
+        truncado = True
+    else:
+        truncado = False
+    thead = "<tr>" + "".join(f"<th>{html.escape(str(c))}</th>" for c in cols) + "</tr>"
+    tbody = ""
+    for _, row in d.iterrows():
+        tbody += "<tr>" + "".join(
+            f"<td>{_celula_impressao(row[c])}</td>" for c in cols
+        ) + "</tr>"
+    rodape = ""
+    if truncado:
+        rodape = (
+            f"<p class='nota'>Exibindo as primeiras {max_linhas} de "
+            f"{len(df)} linhas.</p>"
+        )
+    return f"<table><thead>{thead}</thead><tbody>{tbody}</tbody></table>{rodape}"
+
+
+CSS_IMPRESSAO_PROJ = """
+    @page { size: A4 landscape; margin: 10mm; }
+    * { box-sizing: border-box; }
+    body {
+        font-family: "Segoe UI", Roboto, Arial, sans-serif;
+        color: #1f2430; background: #ffffff; margin: 0; padding: 14px;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    h1 { font-size: 18px; margin: 0 0 4px 0; color: #3b3f8c; }
+    h2 { font-size: 13px; margin: 14px 0 6px 0; color: #3b3f8c;
+         border-bottom: 2px solid #667eea; padding-bottom: 3px; }
+    .sub { font-size: 11px; color: #5a6172; margin-bottom: 10px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin: 8px 0 12px 0; }
+    .kpi { background: #f8fafc; border: 1px solid #dfe4f0; border-radius: 8px;
+            padding: 6px 8px; }
+    .kpi .t { font-size: 9px; color: #5a6172; text-transform: uppercase; letter-spacing: 0.04em; }
+    .kpi .v { font-size: 14px; font-weight: 800; color: #1f2430; }
+    .kpi .n { font-size: 9px; color: #7a8194; }
+    table { width: 100%; border-collapse: collapse; margin: 6px 0 10px 0; }
+    th, td { border: 1px solid #d9dfec; padding: 4px 6px; font-size: 9.5px; text-align: left; vertical-align: top; }
+    th { background: #eef1f7; color: #5a6172; font-size: 9px; text-transform: uppercase;
+         letter-spacing: 0.04em; font-weight: 700; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tfoot td { font-weight: 800; background: #f0f2f8; }
+    .nota { font-size: 9px; color: #7a8194; font-style: italic; margin: 2px 0 8px 0; }
+    .vazio { font-size: 10px; color: #7a8194; font-style: italic; }
+    .legenda { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0 10px 0; font-size: 9.5px; }
+    .legenda span { display: inline-flex; align-items: center; gap: 4px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    @media print {
+        body { padding: 0; }
+        .barra { display: none; }
+        section { break-inside: avoid; }
+        table, tr, td, th { break-inside: avoid; }
+        thead { display: table-header-group; }
+    }
+"""
+
+COMPONENTE_IMPRESSAO_PROJ = """
+    <style>
+        html, body { margin: 0; padding: 0; background: transparent; }
+    </style>
+    <a id="proj-abrir-impressao" href="#" target="_blank" rel="noopener" style="
+        display: block; box-sizing: border-box; width: 100%; cursor: pointer;
+        border-radius: 8px; padding: 0.55rem 1rem; text-align: center;
+        text-decoration: none; font-family: 'Segoe UI', Roboto, sans-serif;
+        font-size: 0.95rem; font-weight: 700; color: #ffffff;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        box-shadow: 0 2px 10px rgba(102, 126, 234, 0.35);">
+        🖨️ Abrir para impressão (nova guia)
+    </a>
+    <script>
+        (function () {
+            const KB_B64 = "__B64__";
+            const bin = atob(KB_B64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const documento = new TextDecoder("utf-8").decode(bytes);
+            const url = URL.createObjectURL(new Blob([documento], { type: "text/html;charset=utf-8" }));
+            document.getElementById("proj-abrir-impressao").href = url;
+        })();
+    </script>
+"""
+
+
+def gerar_html_impressao_projecao():
+    kpis_html = ""
+    if not consolidado.empty:
+        total_cap = float(consolidado["Capacidade semanal"].sum()) if "Capacidade semanal" in consolidado.columns else 0.0
+        total_aberto = float(consolidado["Saldo aberto"].sum()) if "Saldo aberto" in consolidado.columns else 0.0
+        total_compra = float(consolidado["Compra atribuída"].sum()) if "Compra atribuída" in consolidado.columns else 0.0
+        n_conf = len(consolidado)
+        kpis_html = (
+            "<div class='kpi-grid'>"
+            f"<div class='kpi'><div class='t'>Confecções</div><div class='v'>{fmt_num(n_conf)}</div></div>"
+            f"<div class='kpi'><div class='t'>Capacidade semanal</div><div class='v'>{fmt_num(total_cap)}</div>"
+            f"<div class='n'>média das semanas</div></div>"
+            f"<div class='kpi'><div class='t'>Pedidos em aberto</div><div class='v'>{fmt_num(total_aberto)}</div>"
+            f"<div class='n'>unidades</div></div>"
+            f"<div class='kpi'><div class='t'>Compra sugerida</div><div class='v'>{fmt_num(total_compra)}</div>"
+            f"<div class='n'>unidades</div></div>"
+            f"<div class='kpi'><div class='t'>Semanas p/ absorver</div><div class='v'>{fmt_num(semanas_globais) if semanas_globais is not None else '—'}</div></div>"
+            f"<div class='kpi'><div class='t'>Sem histórico</div><div class='v'>{fmt_num(n_sem_historico)}</div></div>"
+            "</div>"
+        )
+
+    blocos = []
+    blocos.append("<h2>1. Consolidado por confecção</h2>")
+    cols_consolidado = [
+        c for c in [
+            "Confecção", "Com histórico", "Capacidade semanal", "Semanas observadas",
+            "Produção no período", "Pedidos abertos", "Saldo aberto",
+            "Compra atribuída", "Itens sugeridos", "Semanas p/ absorver",
+        ] if c in consolidado.columns
+    ]
+    blocos.append(_tabela_impressao(consolidado, cols_consolidado))
+
+    blocos.append("<h2>2. Compra sugerida</h2>")
+    blocos.append(_tabela_impressao(compra_export, list(compra_export.columns), max_linhas=120))
+
+    if not pedidos_export.empty:
+        blocos.append("<h2>3. Pedidos em aberto (rastreabilidade)</h2>")
+        blocos.append(_tabela_impressao(pedidos_export, list(pedidos_export.columns), max_linhas=150))
+
+    if not capacidades.empty:
+        blocos.append("<h2>4. Capacidade semanal por confecção</h2>")
+        cols_cap = [c for c in ["Fornecedor", "Semanas", "ProducaoTotal", "CapacidadeSemanal",
+                                "MelhorSemana", "UltimaSemana"] if c in capacidades.columns]
+        blocos.append(_tabela_impressao(capacidades, cols_cap, max_linhas=40))
+
+    legenda = (
+        "<div class='legenda'>"
+        "<span><span class='dot' style='background:#2e7d32'></span> Já produziu</span>"
+        "<span><span class='dot' style='background:#ef6c00'></span> Semelhante</span>"
+        "<span><span class='dot' style='background:#9e9e9e'></span> Sem histórico</span>"
+        "</div>"
+    )
+
+    html_doc = (
+        "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='utf-8'>"
+        f"<title>Projeção por Confecção — {data_arquivo}</title>"
+        "<style>" + CSS_IMPRESSAO_PROJ + "</style></head><body>"
+        "<div class='barra'>"
+        "<button class='botao' onclick='window.print()'>🖨️ Imprimir / Salvar PDF</button>"
+        "<span class='dica'>Dica: em “Mais definições”, escolha <b>Paisagem</b> e marque "
+        "<b>Gráficos de plano de fundo</b> para sair com as cores.</span></div>"
+        "<header><h1>📌 Projeção por Confecção</h1>"
+        f"<div class='sub'>Data de referência: <b>{pd.Timestamp.today().strftime('%d/%m/%Y')}</b> · "
+        f"{len(consolidado)} confecção(ões) · {fmt_num(total_aberto) if 'total_aberto' in locals() else ''} un. em aberto"
+        f"{(' · Janela da média: ' + str(int(globals().get('semanas_janela', 0))) + ' sem.') if globals().get('semanas_janela') else ''}</div>"
+        "</header>"
+        + legenda
+        + kpis_html
+        + "".join(blocos)
+        + "</body></html>"
+    )
+    return html_doc
+
+
+html_proj = gerar_html_impressao_projecao()
+b64_proj = base64.b64encode(html_proj.encode("utf-8")).decode("ascii")
+
+col_imp1, col_imp2 = st.columns(2)
+with col_imp1:
+    st.iframe(COMPONENTE_IMPRESSAO_PROJ.replace("__B64__", b64_proj), height=58)
+with col_imp2:
+    st.download_button(
+        "⬇️ Baixar HTML (impressão)",
+        data=html_proj,
+        file_name=f"projecao_confeccao_impressao_{data_arquivo}.html",
+        mime="text/html",
         use_container_width=True,
     )
