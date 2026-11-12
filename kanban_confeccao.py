@@ -475,6 +475,21 @@ def pagina_kanban():
             default=["Atrasado", "Alta", "Média", "Baixa"],
         )
 
+        opcoes_classificacao = list(BUCKETS_RASTREABILIDADE) + [SEM_CLASSIFICACAO]
+        classificacoes_sel = st.multiselect(
+            "Classificação",
+            options=opcoes_classificacao,
+            default=[
+                etapa
+                for etapa in opcoes_classificacao
+                if etapa in set(df_kanban["Classificacao"])
+            ],
+            help=(
+                "Etapa do fluxo de produção, definida pelo Status do pedido: "
+                "aguardando envio, aguardando produção ou aguardando saldo."
+            ),
+        )
+
         termo_busca = st.text_input("Buscar por código ou descrição:", value="")
 
         st.markdown("---")
@@ -522,6 +537,7 @@ def pagina_kanban():
 
     df_filtrado = df_base[df_base["Confecção"].isin(confeccoes_sel)].copy()
     df_filtrado = df_filtrado[df_filtrado["Prioridade"].isin(prioridades_sel)]
+    df_filtrado = df_filtrado[df_filtrado["Classificacao"].isin(classificacoes_sel)]
 
     if termo_busca.strip():
         termo = termo_busca.strip().lower()
