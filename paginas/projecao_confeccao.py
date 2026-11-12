@@ -827,6 +827,11 @@ if estoque is None:
 
 semanas_disponiveis = int(producao["Semana"].nunique())
 
+# Garante que o valor persistido não ultrapasse o número de semanas do arquivo
+# atual (evita filtro "travado" ao trocar de base de produção).
+if st.session_state.get("pc_semanas_janela", 1) > semanas_disponiveis:
+    st.session_state["pc_semanas_janela"] = max(1, semanas_disponiveis)
+
 with st.sidebar:
     st.markdown("---")
     st.header("🔍 Filtros")
@@ -834,15 +839,20 @@ with st.sidebar:
     semanas_janela = st.number_input(
         "Janela da média (últimas semanas)",
         min_value=1,
-        max_value=52,
+        max_value=max(1, semanas_disponiveis),
         value=max(1, min(8, semanas_disponiveis)),
         step=1,
         key="pc_semanas_janela",
+        disabled=semanas_disponiveis <= 1,
         help=(
             "A capacidade média usa apenas as últimas N semanas observadas no "
             f"arquivo. O arquivo atual tem {semanas_disponiveis} semana(s)."
         ),
     )
+    if semanas_disponiveis <= 1:
+        st.caption(
+            "Apenas 1 semana observada no arquivo — a janela não altera o cálculo."
+        )
 
     nomes_confeccoes = set()
     if not producao.empty:
