@@ -221,11 +221,12 @@ with st.sidebar:
     st.markdown("**Filtro de data de necessidade**")
     data_nec_de = st.date_input("De", value=None, key="pf_nec_de")
     data_nec_ate = st.date_input("Até", value=None, key="pf_nec_ate")
-    filtros = {}
-    for rotulo, coluna in (("Status", "Status"), ("Marca", "Marca"), ("Operação Produtiva", "Operação"), ("Grupo do Cliente", "Grupo"), ("Coleção", "Coleção")):
-        valores = opcoes(coluna)
-        if 1 < len(valores) <= 200:
-            filtros[coluna] = st.multiselect(rotulo, valores, default=valores, key=f"pf_flt_{coluna}")
+    with st.expander("Filtros de item (Status, Marca, Operação...)", expanded=False):
+        filtros = {}
+        for rotulo, coluna in (("Status", "Status"), ("Marca", "Marca"), ("Operação Produtiva", "Operação"), ("Grupo do Cliente", "Grupo"), ("Coleção", "Coleção")):
+            valores = opcoes(coluna)
+            if 1 < len(valores) <= 200:
+                filtros[coluna] = st.multiselect(rotulo, valores, default=valores, key=f"pf_flt_{coluna}")
 
 # ==================== PREPARAÇÃO DO DF ====================
 
