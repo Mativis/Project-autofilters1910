@@ -142,6 +142,7 @@ proj["Qtd"] = coluna_numero(bruto, "Qtd *", "Qtd").fillna(0.0)
 proj["Saldo Calc."] = coluna_numero(bruto, "Saldo Calc.").fillna(0.0)
 proj["Em Trânsito"] = coluna_numero(bruto, "Em Trânsito").fillna(0.0)
 proj["Saldo"] = ((proj["Qtd"] - proj["Saldo Calc."]) - proj["Em Trânsito"]).clip(lower=0)
+proj["R$ Total Calc."] = coluna_numero(bruto, "R$ Total Calc.").fillna(0.0)
 proj["Dt Agendamento"] = coluna_data(bruto, "Dt. Agendamento", "Dt Agendamento")
 proj["Dt Entrega"] = coluna_data(bruto, "Dt Entrega", "Dt. Entrega")
 proj["Dt Pedido"] = coluna_data(bruto, "Dt Pedido", "Dt. Pedido")
@@ -601,6 +602,122 @@ else:
             st.metric("Códigos únicos", fmt_num(tecido_pf["Cód Confec"].nunique()))
     with st.container(border=True):
         st.dataframe(tecido_pf.sort_values("Tecido Sugerido (m)", ascending=False).style.format({"Saldo 5": "{:,.0f}", "Tec Faz x Confec": "{:,.0f}", "Cons. Unitário": "{:,.4f}", "Tecido Sugerido (m)": "{:,.3f}"}), width="stretch", hide_index=True, height=300)
+
+# ==================== CLASSIFICAÇÃO DOS PEDIDOS (FATURAMENTO) ====================
+
+def _classificar_pedidos_projecao(df):
+    """Classifica cada pedido em: Pronto para faturar, Faturamento parcial ou Pedidos em demanda.
+
+    - Pronto para faturar: todos os itens do pedido têm Saldo Calc. = Qtd *.
+    - Faturamento parcial: ao menos 1 item completo (Saldo Calc. = Qtd *) e a soma
+      do R$ Total Calc. dos itens completos > R$ 3.000,00.
+    - Pedidos em demanda: pedido não completo, mas com Saldo Calc. > 0.
+    """
+    if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+        return pd.DataFrame()
+    if "Pedido" not in df.columns or "Saldo Calc." not in df.columns:
+        return pd.DataFrame()
+
+    d = df.copy()
+    if "Qtd" in d.columns:
+        d["_qtd"] = pd.to_numeric(d["Qtd"], errors="coerce").fillna(0.0)
+    elif "Qtd *" in d.columns:
+        d["_qtd"] = pd.to_numeric(d["Qtd *"], errors="coerce").fillna(0.0)
+    else:
+        return pd.DataFrame()
+    d["_saldo"] = pd.to_numeric(d["Saldo Calc."], errors="coerce").fillna(0.0)
+    if "R$ Total Calc." in d.columns:
+        d["_valor"] = pd.to_numeric(d["R$ Total Calc."], errors="coerce").fillna(0.0)
+    else:
+        d["_valor"] = 0.0
+    d["_completo"] = (d["_saldo"] - d["_qtd"]).abs() < 1e-6
+
+    linhas = []
+    for pedido, g in d.groupby("Pedido", sort=False):
+        n_itens = len(g)
+        n_comp = int(g["_completo"].sum())
+        todos = n_itens > 0 and n_comp == n_itens
+        valor_comp = float(g.loc[g["_completo"], "_valor"].sum())
+        tem_comp = n_comp > 0
+        saldo_tot = float(g["_saldo"].sum())
+        tem_saldo = saldo_tot > 0
+        if todos:
+            classe = "Pronto para faturar"
+        elif tem_comp and valor_comp > 3000.0:
+            classe = "Faturamento parcial"
+        elif (not todos) and tem_saldo:
+            classe = "Pedidos em demanda"
+        else:
+            classe = "Sem demanda"
+        cliente = ""
+        if "Cliente" in g.columns and len(g):
+            cliente = str(g["Cliente"].iloc[0])
+        linhas.append({
+            "Pedido": pedido,
+            "Cliente": cliente,
+            "Itens": n_itens,
+            "Itens completos": n_comp,
+            "Valor completo (R$)": valor_comp,
+            "Saldo Calc. total": saldo_tot,
+            "Classificação": classe,
+        })
+    return pd.DataFrame(linhas)
+
+
+st.markdown("### 📋 Classificação dos Pedidos (Faturamento)")
+classif_df = _classificar_pedidos_projecao(proj)
+if classif_df.empty:
+    st.info("Sem dados suficientes para classificar os pedidos.")
+else:
+    resumo_classif = (
+        classif_df.groupby("Classificação", as_index=False)
+        .agg(
+            Pedidos=("Pedido", "count"),
+            **{"Itens completos": ("Itens completos", "sum")},
+            **{"Valor completo (R$)": ("Valor completo (R$)", "sum")},
+            **{"Saldo Calc. total": ("Saldo Calc. total", "sum")},
+        )
+        .sort_values("Pedidos", ascending=False)
+    )
+    st.dataframe(
+        resumo_classif,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Valor completo (R$)": st.column_config.NumberColumn(
+                "Valor completo (R$)", format="R$ %.2f"
+            ),
+            "Saldo Calc. total": st.column_config.NumberColumn(
+                "Saldo Calc. total", format="%.0f"
+            ),
+        },
+    )
+
+    classes_disp = sorted(classif_df["Classificação"].unique().tolist())
+    sel_classes = st.multiselect(
+        "Filtrar por classificação",
+        options=classes_disp,
+        default=classes_disp,
+        key="pf_classif_sel",
+    )
+    view_classif = (
+        classif_df[classif_df["Classificação"].isin(sel_classes)]
+        if sel_classes
+        else classif_df
+    )
+    st.dataframe(
+        view_classif.sort_values(["Classificação", "Pedido"]),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Valor completo (R$)": st.column_config.NumberColumn(
+                "Valor completo (R$)", format="R$ %.2f"
+            ),
+            "Saldo Calc. total": st.column_config.NumberColumn(
+                "Saldo Calc. total", format="%.0f"
+            ),
+        },
+    )
 
 # ==================== COMPRA SUGERIDA ====================
 
