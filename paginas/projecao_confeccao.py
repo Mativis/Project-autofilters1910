@@ -908,48 +908,49 @@ with st.sidebar:
         key="pc_somente_aberto",
     )
 
-    # ---------- Filtros por item ----------
-    st.markdown("---")
-    st.caption("Filtros por item")
+    with st.expander("🔧 Filtros avançados (item)", expanded=False):
+        # ---------- Filtros por item ----------
+        st.markdown("---")
+        st.caption("Filtros por item")
 
-    def _opcoes(colunas_por_df):
-        valores = set()
-        for df, col in colunas_por_df:
-            if df is not None and not (isinstance(df, pd.DataFrame) and df.empty) and col in df.columns:
-                valores.update(str(v) for v in df[col].dropna().unique() if str(v).strip())
-        return sorted(valores, key=lambda v: _norm(v))
+        def _opcoes(colunas_por_df):
+            valores = set()
+            for df, col in colunas_por_df:
+                if df is not None and not (isinstance(df, pd.DataFrame) and df.empty) and col in df.columns:
+                    valores.update(str(v) for v in df[col].dropna().unique() if str(v).strip())
+            return sorted(valores, key=lambda v: _norm(v))
 
-    opcoes_tipo = _opcoes([(producao, "Tipo"), (pedidos, "Tipo"), (estoque, "Tipo")])
-    tipos_sel = st.multiselect(
-        "Tipo de confecção",
-        options=opcoes_tipo,
-        default=opcoes_tipo,
-        key="pc_tipos",
-    )
+        opcoes_tipo = _opcoes([(producao, "Tipo"), (pedidos, "Tipo"), (estoque, "Tipo")])
+        tipos_sel = st.multiselect(
+            "Tipo de confecção",
+            options=opcoes_tipo,
+            default=opcoes_tipo,
+            key="pc_tipos",
+        )
 
-    opcoes_tamanho = _opcoes([(producao, "Tamanho"), (pedidos, "Tamanho"), (estoque, "Tamanho")])
-    tamanhos_sel = st.multiselect(
-        "Tamanho",
-        options=opcoes_tamanho,
-        default=opcoes_tamanho,
-        key="pc_tamanhos",
-    )
+        opcoes_tamanho = _opcoes([(producao, "Tamanho"), (pedidos, "Tamanho"), (estoque, "Tamanho")])
+        tamanhos_sel = st.multiselect(
+            "Tamanho",
+            options=opcoes_tamanho,
+            default=opcoes_tamanho,
+            key="pc_tamanhos",
+        )
 
-    opcoes_marca = _opcoes([(producao, "Marca"), (pedidos, "Marca"), (estoque, "Marca")])
-    marcas_sel = st.multiselect(
-        "Marca",
-        options=opcoes_marca,
-        default=opcoes_marca,
-        key="pc_marcas",
-    )
+        opcoes_marca = _opcoes([(producao, "Marca"), (pedidos, "Marca"), (estoque, "Marca")])
+        marcas_sel = st.multiselect(
+            "Marca",
+            options=opcoes_marca,
+            default=opcoes_marca,
+            key="pc_marcas",
+        )
 
-    opcoes_operacao = _opcoes([(producao, "Operacao"), (pedidos, "Operacao"), (estoque, "Operacao")])
-    operacoes_sel = st.multiselect(
-        "Operação produtiva",
-        options=opcoes_operacao,
-        default=opcoes_operacao,
-        key="pc_operacoes",
-    )
+        opcoes_operacao = _opcoes([(producao, "Operacao"), (pedidos, "Operacao"), (estoque, "Operacao")])
+        operacoes_sel = st.multiselect(
+            "Operação produtiva",
+            options=opcoes_operacao,
+            default=opcoes_operacao,
+            key="pc_operacoes",
+        )
 
 # ==================== APLICAÇÃO DOS FILTROS POR ITEM ====================
 
