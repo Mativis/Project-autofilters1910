@@ -682,7 +682,7 @@ else:
     )
     st.dataframe(
         resumo_classif,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "Valor completo (R$)": st.column_config.NumberColumn(
@@ -708,7 +708,7 @@ else:
     )
     st.dataframe(
         view_classif.sort_values(["Classificação", "Pedido"]),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "Valor completo (R$)": st.column_config.NumberColumn(

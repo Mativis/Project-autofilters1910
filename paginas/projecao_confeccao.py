@@ -195,7 +195,7 @@ with st.sidebar:
             f'<span class="db-file-name">{nome_producao}</span></div>',
             unsafe_allow_html=True,
         )
-        if st.button("🔄 Trocar produção", key="pc_trocar_producao", use_container_width=True):
+        if st.button("🔄 Trocar produção", key="pc_trocar_producao", width="stretch"):
             for chave in CHAVES_PRODUCAO:
                 st.session_state.pop(chave, None)
             st.session_state.pop("producao_conf_df", None)
@@ -1334,7 +1334,7 @@ else:
                     showlegend=False,
                     margin=dict(t=55, l=10, r=10, b=10),
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
 
         with g2:
             dados_bucket = pd.DataFrame(
@@ -1370,7 +1370,7 @@ else:
                     xaxis_title="Unidades",
                     yaxis_title="",
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
 
         pedidos_ficha = pd.DataFrame()
         if pedidos is not None and not pedidos.empty:
@@ -1428,7 +1428,7 @@ else:
                             if coluna in detalhe_ficha.columns
                         ]
                     ],
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                     column_config={
                         "Compra": st.column_config.TextColumn(
@@ -1488,7 +1488,7 @@ else:
                             "Motivo",
                         ]
                     ],
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                     column_config={
                         "Categoria": st.column_config.TextColumn(
@@ -1554,7 +1554,7 @@ else:
                     )
                 st.dataframe(
                     itens_ficha.head(100),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                     column_config={
                         "Codigo": st.column_config.TextColumn(
@@ -1609,7 +1609,7 @@ else:
         coloraxis_showscale=False,
         margin=dict(t=55, l=10, r=10, b=10),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 tabela_capacidade = capacidades_sel.copy()
 tabela_capacidade["Última semana"] = tabela_capacidade["UltimaSemana"].map(_periodo)
@@ -1635,7 +1635,7 @@ st.dataframe(
     tabela_capacidade[
         [c for c in colunas_capacidade if c in tabela_capacidade.columns]
     ],
-    use_container_width=True,
+    width="stretch",
     hide_index=True,
     column_config={
         "Confecção": st.column_config.TextColumn("Confecção", width="large"),
@@ -1676,7 +1676,7 @@ with st.expander("📅 Ver Histórico Semanal Detalhado"):
             "Itens": "Itens",
         }
     )
-    st.dataframe(semanal, use_container_width=True, hide_index=True)
+    st.dataframe(semanal, width="stretch", hide_index=True)
 
 # ==================== 3. RASTREABILIDADE DOS PEDIDOS ====================
 
@@ -1757,7 +1757,7 @@ else:
             legend=dict(orientation="h", y=1.12),
             margin=dict(t=70, l=10, r=10, b=10),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         tabela_pedidos = resumo_sel.rename(
             columns={
@@ -1776,7 +1776,7 @@ else:
                     "Aguardando saldo",
                 ]
             ],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "Confecção": st.column_config.TextColumn("Confecção", width="large"),
@@ -1816,7 +1816,7 @@ else:
             detalhe_pedidos[
                 [c for c in colunas_detalhe if c in detalhe_pedidos.columns]
             ],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "Confecção": st.column_config.TextColumn("Confecção", width="medium"),
@@ -1875,7 +1875,7 @@ else:
             template=template_plotly(),
         )
         fig.update_layout(height=380, margin=dict(t=55, l=10, r=10, b=10))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with c2:
         k_cat1, k_cat2, k_cat3 = st.columns(3)
@@ -1926,7 +1926,7 @@ else:
                     "Motivo",
                 ]
             ],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "Categoria": st.column_config.TextColumn("Categoria", width="small"),
@@ -1979,7 +1979,7 @@ else:
                             "Capacidade semanal",
                         ]
                     ],
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                     column_config={
                         "Código": st.column_config.TextColumn("Código", width="small"),
@@ -2065,7 +2065,7 @@ with c1:
         data=compra_export.to_csv(index=False, encoding="utf-8-sig"),
         file_name=f"compra_sugerida_confeccao_{data_arquivo}.csv",
         mime="text/csv",
-        use_container_width=True,
+        width="stretch",
     )
 with c2:
     st.download_button(
@@ -2073,7 +2073,7 @@ with c2:
         data=buffer.getvalue(),
         file_name=f"projecao_confeccao_{data_arquivo}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
+        width="stretch",
     )
 
 # ==================== IMPRESSÃO / PDF ====================
@@ -2292,5 +2292,5 @@ with col_imp2:
         data=html_proj,
         file_name=f"projecao_confeccao_impressao_{data_arquivo}.html",
         mime="text/html",
-        use_container_width=True,
+        width="stretch",
     )
