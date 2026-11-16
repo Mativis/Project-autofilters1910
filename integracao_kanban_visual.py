@@ -54,6 +54,7 @@ EXTRAS: tuple[str, ...] = (
     "Ope. produtiva",
     "Tipo do Confeccionado",
     "Qtd Ret",
+    "Classificacao",
 )
 
 
