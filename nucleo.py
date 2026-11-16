@@ -916,7 +916,45 @@ def aplicar_estilo_comum():
         f"--db-accent:{cores.get('accent', '#6366f1')};"
         "}"
     )
-    st.markdown(f"<style>{variaveis}{CSS_COMUM}</style>", unsafe_allow_html=True)
+    marca_sidebar = """
+        [data-testid="stSidebar"]::before {
+            content: "Sistema de Confecção";
+            display: block;
+            font-size: 1.05rem;
+            font-weight: 800;
+            color: var(--db-text, #1f2430);
+            padding: 0.25rem 0 0.75rem 0;
+            margin-bottom: 0.5rem;
+            border-bottom: 1px solid var(--db-border, #e2e8f0);
+            letter-spacing: -0.01em;
+        }
+        [data-testid="stSidebar"] .stMarkdown p { margin-bottom: 0.4rem; }
+        [data-testid="stSidebar"] hr { margin: 0.75rem 0; opacity: 0.4; }
+        .db-file-ok {
+            background: linear-gradient(135deg, rgba(34,197,94,0.08) 0%, rgba(34,197,94,0.02) 100%);
+            border: 1px solid rgba(34,197,94,0.25);
+            border-left: 3px solid #22c55e;
+            border-radius: var(--radius-md, 12px);
+            padding: 0.5rem 0.75rem;
+            margin: 0.35rem 0;
+            font-size: 0.85rem;
+        }
+        .db-file-name {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--db-text-soft, #5a6172);
+            margin-top: 0.15rem;
+            word-break: break-all;
+        }
+        .db-card {
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .db-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px var(--db-shadow, rgba(0,0,0,0.08));
+        }
+    """
+    st.markdown(f"<style>{variaveis}{CSS_COMUM}{marca_sidebar}</style>", unsafe_allow_html=True)
 
 
 def card(titulo, valor, nota="", cor=None):
