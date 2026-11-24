@@ -206,27 +206,84 @@ def opcoes(coluna):
 with st.sidebar:
     st.markdown("---")
     st.header("🔍 Filtros da Projeção")
-    somente_abertos = st.checkbox("Somente com necessidade de material (Saldo > 0)", value=True, key="pf_abertos", help="Saldo = ((Qtd* - Saldo Calc.) - Em Trânsito).")
-    somente_com_data = st.checkbox("Desconsiderar pedidos sem data de agendamento ou entrega", value=True, key="pf_com_data")
-    desconsiderar_atrasados = st.checkbox("Desconsiderar atrasados", value=False, key="pf_desc_atrasados")
-    qtd_min_item_pf = st.number_input("Quantidade mínima por item (un.)", min_value=0, max_value=100000, value=100, step=10, key="pf_qtd_min", help="Itens com necessidade total (somada por Cód Confec) abaixo desse valor são exibidos separadamente.")
-    semanas_distribuir = st.number_input("Semanas para distribuir a demanda", min_value=1, max_value=52, value=4, step=1, key="pf_semanas_dist", help="A demanda de cada item é dividida igualmente por esse número de semanas. Cada semana vira uma entrega.")
-    descontar_producao = st.checkbox("Descontar produção já em confecção", value=True, key="pf_desc_prod")
-    desconsiderar_sem_tecido = st.checkbox("Desconsiderar itens sem tecido disponível", value=False, key="pf_desc_tecido")
-    intervalo_semanas = st.number_input("Intervalo mínimo entre chegadas (semanas)", min_value=1, max_value=8, value=1, step=1, key="pf_intervalo")
-    capacidade_entrega = st.number_input("Capacidade por entrega (unidades)", min_value=1000, max_value=100000, value=23000, step=1000, key="pf_cap")
-    pct_cameba = st.number_input("Limite CAMEBA por entrega (%)", min_value=1, max_value=100, value=25, step=1, key="pf_pct")
-    inicio = st.date_input("Início do planejamento", value=date.today(), key="pf_inicio")
-    busca_cliente = st.text_input("Buscar cliente", value="", key="pf_busca")
-    st.markdown("**Filtro de data de necessidade**")
-    data_nec_de = st.date_input("De", value=None, key="pf_nec_de")
-    data_nec_ate = st.date_input("Até", value=None, key="pf_nec_ate")
-    with st.expander("Filtros de item (Status, Marca, Operação...)", expanded=False):
+    st.caption(
+        "Saldo em aberto = Qtd* − Saldo Calc. − Em Trânsito. "
+        "A necessidade líquida desconta o que já está em produção."
+    )
+
+    # ---------- Escopo: o que entra no planejamento ----------
+    with st.expander("🎯 Escopo da demanda", expanded=True):
+        somente_abertos = st.checkbox(
+            "Somente com necessidade de material (Saldo > 0)",
+            value=True, key="pf_abertos",
+            help="Filtra itens cujo saldo em aberto é maior que zero.",
+        )
+        somente_com_data = st.checkbox(
+            "Somente com data de agendamento ou entrega",
+            value=True, key="pf_com_data",
+        )
+        desconsiderar_atrasados = st.checkbox(
+            "Desconsiderar atrasados",
+            value=False, key="pf_desc_atrasados",
+            help="Remove itens cuja data de necessidade já passou.",
+        )
+        busca_cliente = st.text_input(
+            "Buscar cliente", value="", key="pf_busca",
+        )
         filtros = {}
-        for rotulo, coluna in (("Status", "Status"), ("Marca", "Marca"), ("Operação Produtiva", "Operação"), ("Grupo do Cliente", "Grupo"), ("Coleção", "Coleção")):
+        for rotulo, coluna in (
+            ("Status", "Status"), ("Marca", "Marca"),
+            ("Operação Produtiva", "Operação"),
+            ("Grupo do Cliente", "Grupo"), ("Coleção", "Coleção"),
+        ):
             valores = opcoes(coluna)
             if 1 < len(valores) <= 200:
-                filtros[coluna] = st.multiselect(rotulo, valores, default=valores, key=f"pf_flt_{coluna}")
+                filtros[coluna] = st.multiselect(
+                    rotulo, valores, default=valores, key=f"pf_flt_{coluna}"
+                )
+
+    # ---------- Datas: quando a demanda é necessária ----------
+    with st.expander("📅 Datas e horizonte", expanded=False):
+        inicio = st.date_input(
+            "Início do planejamento", value=date.today(), key="pf_inicio",
+        )
+        data_nec_de = st.date_input("Necessidade de", value=None, key="pf_nec_de")
+        data_nec_ate = st.date_input("Necessidade até", value=None, key="pf_nec_ate")
+
+    # ---------- Execução: como a demanda é distribuída ----------
+    with st.expander("⚙️ Regras de planejamento", expanded=False):
+        descontar_producao = st.checkbox(
+            "Descontar produção já em confecção",
+            value=True, key="pf_desc_prod",
+            help="Abate a quantidade em produção da necessidade de cada item.",
+        )
+        qtd_min_item_pf = st.number_input(
+            "Qtd mínima por item (un.)",
+            min_value=0, max_value=100000, value=100, step=10, key="pf_qtd_min",
+            help="Itens abaixo desse total são exibidos em lista separada.",
+        )
+        semanas_distribuir = st.number_input(
+            "Semanas para distribuir a demanda",
+            min_value=1, max_value=52, value=4, step=1, key="pf_semanas_dist",
+            help="Cada item é dividido em N partes iguais ao longo das semanas.",
+        )
+        intervalo_semanas = st.number_input(
+            "Intervalo mínimo entre entregas (semanas)",
+            min_value=1, max_value=8, value=1, step=1, key="pf_intervalo",
+        )
+        capacidade_entrega = st.number_input(
+            "Capacidade por entrega (un.)",
+            min_value=1000, max_value=100000, value=23000, step=1000, key="pf_cap",
+        )
+        pct_cameba = st.number_input(
+            "Limite CAMEBA por entrega (%)",
+            min_value=1, max_value=100, value=25, step=1, key="pf_pct",
+        )
+        desconsiderar_sem_tecido = st.checkbox(
+            "Desconsiderar itens sem tecido disponível",
+            value=False, key="pf_desc_tecido",
+            help="Exige Saldo 5 suficiente para a necessidade planejada.",
+        )
 
 # ==================== PREPARAÇÃO DO DF ====================
 
