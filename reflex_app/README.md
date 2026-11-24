@@ -1,57 +1,69 @@
-# Visualfil Reflex — versão paralela otimizada
+# Visualfil Reflex — versão paralela profissional
 
-Protótipo do Visualfil em **Reflex** (Python → React), criado para avaliar ganho de
-performance e interface mais responsiva, sem alterar o sistema Streamlit atual.
+Versão paralela do Visualfil em **Reflex** (Python → React), focada em performance
+e interface mais responsiva. Roda junto com o Streamlit, sem alterá-lo.
 
 ## Estrutura
 
 ```
 reflex_app/
-  rxconfig.py                       # config (app_name = visualfil_reflex)
-  requirements.txt                  # reflex, pandas, openpyxl, requests
+  run.bat                    # inicializador (configura Node + variáveis)
+  config.example.env         # modelo de configuração
+  rxconfig.py                # tema Radix (índigo) + plugins
+  requirements.txt
   visualfil_reflex/
-    __init__.py
-    visualfil_reflex.py             # estado + páginas
+    visualfil_reflex.py      # estado, API e 4 páginas
 ```
 
-## Pré-requisitos
+## Como rodar (Windows)
 
-- Python 3.10+ (testado em 3.13)
-- Node.js LTS (necessário para o frontend do Reflex)
+1. Copie `config.example.env` para `.env` e preencha a URL do Web App e as credenciais.
+2. Duplo clique em `run.bat` (ou `.\run.bat` no PowerShell).
 
-## Rodar local
-
-```powershell
-cd reflex_app
-pip install -r requirements.txt
-$env:VFCLOUD_URL = "https://script.google.com/macros/s/SEU_ID/exec"
-python -m reflex run
-```
+O script já configura:
+- `PATH` com Node.js (necessário para o frontend);
+- `REACT_ROUTER_DEV_RESTARTED=true` (contorna bug do React Router no Node 26/Windows);
+- variáveis `VFCLOUD_URL`, `VFCLOUD_USUARIO`, `VFCLOUD_SENHA`.
 
 Abra `http://localhost:3000`.
 
-## O que já está implementado
+## Telas
 
-- **Login** contra a mesma API do Visualfil Cloud (`appscript/VisualfilCloud.gs`);
-- **Kanban online** (`/kanban`): lista demandas, lê `pedidos.xlsx` + `estoque.xlsx`
-  do Drive e mostra os pedidos com Marca/classificação;
-- **Compra sugerida** (`/compra`): card com total, resumo por confecção e tabela
-  discriminada por item (`|Saldo 5| × 1,1 − Tec Faz "x" Confec`);
-- Estado central em `rx.State`, com carregamento assíncrono e tabelas com
-  paginação/busca/ordenação nativas do Reflex.
+- **`/`** — login com usuário/senha do Visualfil Cloud + avisos de erro/sucesso.
+- **`/kanban`** — Kanban online: seleção de demanda, KPIs e tabela de pedidos
+  (código, item, confecção, marca do estoque, quantidades e status), com
+  paginação, busca e ordenação no cliente.
+- **`/compra`** — compra sugerida: total, resumo por confecção, tabela discriminada
+  por item e botão para salvar a análise no banco online.
+- **`/admin`** (somente admin) — abas:
+  - **Demandas**: criar demanda com nome/fonte (Remessa), selecionar demanda e
+    enviar/atualizar XLSX (pedidos, estoque, producao, projecao) por drag-and-drop;
+  - **Usuários**: criar/editar usuários e senhas, marcar admin;
+  - **Permissões**: definir por usuário/página nível `visualizacao`, `total` ou `restrito`.
 
-## Por que pode ser mais rápido
+## Design
 
-- Reflex compila para React: interações acontecem no cliente sem recarregar a página;
-- apenas os dados necessários trafegam entre estado Python e interface;
-- tabelas com paginação/ordenação no front evitam recomputar a página inteira.
+- Sidebar escura com navegação, tema índigo (Radix), cards de KPI, tabelas com
+  Paginação/Busca/Ordenação nativas, callouts de feedback e spinner de carregamento.
+- Layout responsivo via Flex/Stack do Reflex.
 
-## Limitações desta primeira entrega
+## Validação
 
-- Somente leitura: Admin (usuários/permissões/upload de XLSX) continua no Streamlit;
-- Autenticação usa a API do Cloud; ainda não há proteção de rota por permissão no Reflex;
-- Visual ainda é o padrão Radix (sem o tema customizado do Visualfil).
+`python -m reflex compile` → **App compiled successfully** (21/20).
 
-## Compilação validada
+## Diferenças em relação ao Streamlit
 
-`python -m reflex compile` concluiu com sucesso (18/17).
+| Item | Streamlit | Reflex |
+|---|---|---|
+| Interação | rerun do script | reatividade no cliente (React) |
+| Tabelas | st.datadataframe | data_table com paginação no front |
+| Login | tela própria | rota `/` com redirecionamento |
+| Admin | página completa | painel com abas no app |
+| Tema | CSS customizado | Radix theme + componentes |
+
+## Próximos passos possíveis
+
+- Proteger rotas por permissão no Reflex (hoje só admin é escondido);
+- Portar Dashboards/Projeções;
+- Deploy no Reflex Cloud ou container Docker;
+- PWA/APK com shell nativo.
