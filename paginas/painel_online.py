@@ -108,6 +108,10 @@ else:
 
 # ============================ COMPRA SUGERIDA POR CONFECCÃO ============================
 st.markdown("### 🛒 Compra sugerida por confecção")
+st.caption(
+    "Regra: |Saldo 5| × 1,1 − Tec Faz 'x' Confec (mínimo zero). "
+    "O catálogo online define a confecção de cada código."
+)
 
 try:
     catalogo = pd.DataFrame(cloud.catalogo())
@@ -124,29 +128,103 @@ else:
     else:
         saldo5 = pd.to_numeric(est["Saldo 5"], errors="coerce").fillna(0)
         neg = est[saldo5 < 0].copy()
+
         if neg.empty:
             st.success("Nenhum item com Saldo 5 negativo — sem compra sugerida.")
         else:
-            # Catálogo: código -> confecção
+            # ---------- enriquecimento ----------
             mapa_conf = {}
+            mapa_item = {}
             if not catalogo.empty and "codigo" in catalogo.columns:
                 for _, r in catalogo.iterrows():
                     cod = str(r.get("codigo", "")).strip()
-                    conf = str(r.get("confeccao", "") or r.get("Fornecedor", "")).strip()
-                    if cod and conf:
+                    if not cod:
+                        continue
+                    conf = str(r.get("confeccao", "") or "").strip()
+                    if conf:
                         mapa_conf[cod] = conf
+                    item = str(r.get("item", "") or "").strip()
+                    if item:
+                        mapa_item[cod] = item
+
             neg["Confecção sugerida"] = neg["Código"].map(mapa_conf).fillna("Sem confecção cadastrada")
+            if "Descrição" in neg.columns:
+                neg["Item"] = neg["Descrição"].astype(str).str.strip()
+            else:
+                neg["Item"] = neg["Código"].map(mapa_item).fillna("—")
+            neg.loc[neg["Item"].isin(["", "nan", "None"]), "Item"] = neg["Código"].map(mapa_item)
+
             tec_col = 'Tec Faz "x" Confec'
-            tec = pd.to_numeric(neg[tec_col], errors="coerce").fillna(0) if tec_col in neg.columns else 0
-            neg["Compra sugerida"] = ((saldo5[neg.index].abs() * 1.10) - tec).clip(lower=0).round()
+            neg["Tec Faz x Confec"] = (
+                pd.to_numeric(neg[tec_col], errors="coerce").fillna(0)
+                if tec_col in neg.columns else 0.0
+            )
+            neg["Cons. Unitário"] = (
+                pd.to_numeric(neg["Cons. Unitário"], errors="coerce").fillna(0)
+                if "Cons. Unitário" in neg.columns else 0.0
+            )
+            neg["Saldo 5"] = saldo5[neg.index]
+            neg["Fator"] = 1.10
+            neg["Base 1,1"] = (neg["Saldo 5"].abs() * 1.10).round(0)
+            neg["Compra sugerida"] = (neg["Base 1,1"] - neg["Tec Faz x Confec"]).clip(lower=0).round()
+            neg["Tecido necessário (m)"] = (neg["Compra sugerida"] * neg["Cons. Unitário"]).round(2)
+
+            # ---------- KPIs ----------
+            k1, k2, k3, k4 = st.columns(4)
+            with k1:
+                st.markdown(card("Total compra sugerida", fmt_num(neg["Compra sugerida"].sum()),
+                                 "unidades", "#b71c1c"), unsafe_allow_html=True)
+            with k2:
+                st.markdown(card("Itens com Saldo 5 negativo", fmt_num(len(neg)),
+                                 "códigos", "#ef6c00"), unsafe_allow_html=True)
+            with k3:
+                st.markdown(card("Confecções", fmt_num(neg["Confecção sugerida"].nunique()),
+                                 "com sugestão", "#3949ab"), unsafe_allow_html=True)
+            with k4:
+                sem = int((neg["Confecção sugerida"] == "Sem confecção cadastrada").sum())
+                st.markdown(card("Sem confecção", fmt_num(sem),
+                                 "cadastrar no catálogo", "#9e9e9e"), unsafe_allow_html=True)
+
+            # ---------- detalhe por item ----------
+            st.markdown("#### 🔍 Detalhe por item")
+            confs = sorted(neg["Confecção sugerida"].unique().tolist())
+            conf_sel = st.multiselect("Filtrar confecção (detalhe)",
+                                      options=confs, default=confs, key="vf_compra_conf")
+            detalhe = neg[neg["Confecção sugerida"].isin(conf_sel)] if conf_sel else neg
+
+            colunas_detalhe = {
+                "Código": st.column_config.TextColumn("Código", width="small"),
+                "Item": st.column_config.TextColumn("Item", width="large"),
+                "Marca": st.column_config.TextColumn("Marca", width="small"),
+                "Confecção sugerida": st.column_config.TextColumn("Confecção", width="medium"),
+                "Saldo 5": st.column_config.NumberColumn("Saldo 5", format="%.0f"),
+                "Tec Faz x Confec": st.column_config.NumberColumn("Tec Faz", format="%.0f"),
+                "Cons. Unitário": st.column_config.NumberColumn("Cons. un.", format="%.4f"),
+                "Base 1,1": st.column_config.NumberColumn("Base 1,1", format="%.0f"),
+                "Compra sugerida": st.column_config.NumberColumn("Compra", format="%.0f"),
+                "Tecido necessário (m)": st.column_config.NumberColumn("Tecido (m)", format="%.2f"),
+            }
+            ordem = [c for c in ("Código", "Item", "Marca", "Confecção sugerida", "Saldo 5",
+                                 "Tec Faz x Confec", "Cons. Unitário", "Base 1,1",
+                                 "Compra sugerida", "Tecido necessário (m)") if c in detalhe.columns]
+            st.dataframe(
+                detalhe[ordem].sort_values("Compra sugerida", ascending=False),
+                width="stretch", hide_index=True, height=360,
+                column_config=colunas_detalhe,
+            )
+
+            # ---------- resumo por confecção ----------
+            st.markdown("#### 📦 Resumo por confecção")
             resumo = (
-                neg.groupby("Confecção sugerida")
-                .agg(Itens=("Código", "count"), **{"Compra sugerida": ("Compra sugerida", "sum")})
-                .reset_index()
+                neg.groupby("Confecção sugerida", as_index=False)
+                .agg(
+                    Itens=("Código", "count"),
+                    **{"Saldo 5": ("Saldo 5", "sum")},
+                    **{"Compra sugerida": ("Compra sugerida", "sum")},
+                    **{"Tecido necessário (m)": ("Tecido necessário (m)", "sum")},
+                )
                 .sort_values("Compra sugerida", ascending=False)
             )
-            st.dataframe(resumo, width="stretch", hide_index=True)
-            st.metric("Total compra sugerida", fmt_num(resumo["Compra sugerida"].sum()))
 
             # capacidade por confecção (produção online, se houver)
             if df_prod_raw is not None:
@@ -159,21 +237,39 @@ else:
                             prod.assign(Qtd=pd.to_numeric(prod[col_qtd], errors="coerce").fillna(0))
                             .groupby(col_conf)["Qtd"].sum().rename("Capacidade semanal")
                         )
-                        resumo = resumo.merge(cap, left_on="Confecção sugerida", right_index=True, how="left")
+                        resumo = resumo.merge(cap, left_on="Confecção sugerida",
+                                              right_index=True, how="left")
                         resumo["Semanas p/ absorver"] = (
                             resumo["Compra sugerida"] / resumo["Capacidade semanal"].replace(0, pd.NA)
                         ).round(1)
-                        st.markdown("##### Capacidade x compra sugerida")
-                        st.dataframe(resumo, width="stretch", hide_index=True)
                 except Exception:
                     st.caption("Não foi possível calcular a capacidade a partir da produção.")
 
-            # salvar análise
+            st.dataframe(
+                resumo,
+                width="stretch", hide_index=True,
+                column_config={
+                    "Confecção sugerida": st.column_config.TextColumn("Confecção", width="large"),
+                    "Itens": st.column_config.NumberColumn("Itens", format="%d"),
+                    "Saldo 5": st.column_config.NumberColumn("Saldo 5", format="%.0f"),
+                    "Compra sugerida": st.column_config.NumberColumn("Compra sugerida", format="%.0f"),
+                    "Tecido necessário (m)": st.column_config.NumberColumn("Tecido (m)", format="%.2f"),
+                    "Capacidade semanal": st.column_config.NumberColumn("Capac./sem.", format="%.0f"),
+                    "Semanas p/ absorver": st.column_config.NumberColumn("Semanas", format="%.1f"),
+                },
+            )
+
+            # ---------- salvar análise ----------
             if st.button("💾 Salvar análise desta demanda", type="primary"):
                 r = cloud.salvar_analise(
                     demanda_id,
                     f"Análise {date.today().strftime('%d/%m/%Y')}",
-                    {"resumo": resumo.to_dict("records"), "pedidos": int(len(kb))},
+                    {
+                        "resumo": resumo.to_dict("records"),
+                        "itens": detalhe[ordem].to_dict("records"),
+                        "pedidos": int(len(kb)),
+                        "total_compra": float(neg["Compra sugerida"].sum()),
+                    },
                 )
                 if r.get("ok"):
                     st.success("Análise salva no banco online.")
