@@ -189,6 +189,7 @@ with aba_demandas:
             if erros:
                 st.error("; ".join(erros))
             else:
+                cloud.cache_limpar(did)
                 st.success("Arquivos enviados/atualizados.")
                 st.rerun()
         if st.button("🗑️ Excluir demanda", type="secondary"):

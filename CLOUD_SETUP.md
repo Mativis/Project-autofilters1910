@@ -48,6 +48,13 @@ Ou preencha URL/usuário/senha na própria tela de login (fica salvo na sessão)
      `Tec Faz "x" Confec`) e capacidade semanal quando `producao.xlsx` existe;
    - botão para **salvar a análise** no banco online.
 
+## 6. Performance (versão do backend 1.2.0)
+
+O backend expõe `arquivos_ler` (lote), `agregado_salvar` e `agregado_ler`
+(pré-agregação). O Painel Online e o app Reflex seguem esta ordem:
+pré-agregação → cache em memória → lote → paralelo. Ao enviar/atualizar XLSX,
+o cache é invalidado automaticamente.
+
 ## 5. Páginas clássicas
 
 O Kanban de Confecção e as demais páginas continuam disponíveis e continuam usando

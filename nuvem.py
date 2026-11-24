@@ -18,6 +18,8 @@ import io
 import json
 import os
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import streamlit as st
@@ -42,6 +44,73 @@ PAGINAS = (
     "Administração",
 )
 NIVEIS = ("visualizacao", "total", "restrito")
+
+# ============================ PERFORMANCE ============================
+
+CACHE_DADOS: dict[str, dict] = {}
+CACHE_TTL = 300
+
+
+def cache_validar(demanda_id: str) -> bool:
+    item = CACHE_DADOS.get(demanda_id)
+    return bool(item and (time.time() - item.get("ts", 0)) < CACHE_TTL)
+
+
+def cache_guardar(demanda_id: str, dados: dict):
+    CACHE_DADOS[demanda_id] = {"ts": time.time(), "dados": dados}
+
+
+def cache_ler(demanda_id: str) -> dict:
+    return (CACHE_DADOS.get(demanda_id) or {}).get("dados", {})
+
+
+def cache_limpar(demanda_id: str = ""):
+    if demanda_id:
+        CACHE_DADOS.pop(demanda_id, None)
+    else:
+        CACHE_DADOS.clear()
+
+
+def arquivos_ler(demanda_id: str, tipos=("pedidos", "estoque", "producao")):
+    """Lê vários XLSX em UMA chamada; fallback paralelo para backend antigo.
+    Devolve (bytes_por_tipo, erros, modo)."""
+    r = call("arquivos_ler", demanda_id=demanda_id, tipos=list(tipos), timeout=240)
+    if r.get("ok") and "arquivos" in r:
+        dados, erros = {}, dict(r.get("erros", {}))
+        for tipo, b64 in r["arquivos"].items():
+            try:
+                dados[tipo] = base64.b64decode(b64)
+            except Exception as exc:
+                erros[tipo] = str(exc)
+        return dados, erros, "lote"
+
+    def um(tipo):
+        try:
+            resp = call("arquivo_ler", demanda_id=demanda_id, tipo=tipo, timeout=240)
+            if not resp.get("ok"):
+                return tipo, None, resp.get("erro", "sem resposta")
+            return tipo, base64.b64decode(resp.get("base64", "")), None
+        except Exception as exc:
+            return tipo, None, str(exc)
+
+    dados, erros = {}, {}
+    with ThreadPoolExecutor(max_workers=len(tipos)) as pool:
+        for tipo, conteudo, erro in pool.map(um, tipos):
+            if conteudo is not None:
+                dados[tipo] = conteudo
+            if erro:
+                erros[tipo] = erro
+    return dados, erros, "paralelo"
+
+
+def agregado_salvar(demanda_id: str, dados: dict) -> dict:
+    return call("agregado_salvar", demanda_id=demanda_id,
+                dados_json=json.dumps(dados, ensure_ascii=False))
+
+
+def agregado_ler(demanda_id: str) -> dict:
+    return call("agregado_ler", demanda_id=demanda_id)
+
 
 
 def _secrets(nome: str) -> str:
