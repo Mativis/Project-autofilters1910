@@ -16,7 +16,7 @@
  * Os XLSX ficam no Google Drive, em VisualfilCloud/<id da demanda>/<tipo>.xlsx
  */
 
-var VF_VERSAO = '1.0.1';
+var VF_VERSAO = '1.1.0';
 var VF_PASTA = 'VisualfilCloud';
 
 function doPost(e) {
@@ -45,6 +45,7 @@ function doPost(e) {
       case 'demanda_excluir': return _admin(user), _acaoDemandaExcluir(p);
       case 'arquivo_salvar': return _admin(user), _acaoArquivoSalvar(p);
       case 'arquivo_ler': return _acaoArquivoLer(p);
+      case 'arquivos_ler': return _acaoArquivosLer(p);
       case 'arquivos_listar': return _ok({ arquivos: _listarArquivos(p.demanda_id) });
       case 'usuarios_listar': return _admin(user), _ok({ usuarios: _aba('USUARIOS').getData() });
       case 'usuario_salvar': return _admin(user), _acaoUsuarioSalvar(p);
@@ -283,6 +284,30 @@ function _acaoArquivoLer(p) {
   if (!arquivos.hasNext()) throw new Error('Arquivo ' + tipo + ' não enviado.');
   var bytes = arquivos.next().getBlob().getBytes();
   return _ok({ base64: Utilities.base64Encode(bytes), tipo: tipo });
+}
+
+/**
+ * Le vários XLSX de uma demanda em UMA ÚNICA chamada (menos idas ao servidor).
+ * Resposta: { ok:true, arquivos:{ pedidos:"base64", estoque:"base64", ... },
+ *             erros:{ tipo:"mensagem" } }
+ */
+function _acaoArquivosLer(p) {
+  var id = String(p.demanda_id || '').trim();
+  var tipos = p.tipos && p.tipos.length ? p.tipos : ['pedidos', 'estoque', 'producao'];
+  var porka = _pastaDemanda(id, false);
+  var arquivos = {};
+  var erros = {};
+  tipos.forEach(function (tipo) {
+    try {
+      if (!porka) throw new Error('Demanda sem arquivos enviados.');
+      var it = porka.getFilesByName(String(tipo) + '.xlsx');
+      if (!it.hasNext()) throw new Error('Arquivo ' + tipo + ' não enviado.');
+      arquivos[tipo] = Utilities.base64Encode(it.next().getBlob().getBytes());
+    } catch (erro) {
+      erros[tipo] = String(erro && erro.message || erro);
+    }
+  });
+  return _ok({ arquivos: arquivos, erros: erros });
 }
 
 function _listarArquivos(id) {

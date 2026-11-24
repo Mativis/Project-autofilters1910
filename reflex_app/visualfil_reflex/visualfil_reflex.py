@@ -61,6 +61,45 @@ def ler_xlsx(conteudo: bytes) -> pd.DataFrame:
     return pd.read_excel(io.BytesIO(conteudo))
 
 
+def buscar_arquivos(demanda_id: str, usuario: str, senha: str,
+                    tipos: tuple[str, ...] = ("pedidos", "estoque", "producao")):
+    """Busca vários XLSX em UMA chamada; se o backend antigo não tiver o
+    action 'arquivos_ler', faz chamadas paralelas como fallback.
+    Devolve (dataframes_por_tipo, erros_por_tipo, modo)."""
+    r = api("arquivos_ler", _usuario=usuario, _senha=senha,
+            demanda_id=demanda_id, tipos=list(tipos))
+    if r.get("ok") and "arquivos" in r:
+        dfs, erros = {}, dict(r.get("erros", {}))
+        for tipo, b64 in r["arquivos"].items():
+            try:
+                dfs[tipo] = ler_xlsx(base64.b64decode(b64))
+            except Exception as exc:
+                erros[tipo] = str(exc)
+        return dfs, erros, "lote"
+
+    # fallback: requisições paralelas (backend antigo)
+    from concurrent.futures import ThreadPoolExecutor
+
+    def um(tipo):
+        try:
+            resp = api("arquivo_ler", _usuario=usuario, _senha=senha,
+                       demanda_id=demanda_id, tipo=tipo)
+            if not resp.get("ok"):
+                return tipo, None, resp.get("erro", "sem resposta")
+            return tipo, ler_xlsx(base64.b64decode(resp.get("base64", ""))), None
+        except Exception as exc:
+            return tipo, None, str(exc)
+
+    dfs, erros = {}, {}
+    with ThreadPoolExecutor(max_workers=len(tipos)) as pool:
+        for tipo, df, erro in pool.map(um, tipos):
+            if df is not None:
+                dfs[tipo] = df
+            if erro:
+                erros[tipo] = erro
+    return dfs, erros, "paralelo"
+
+
 def fmt(valor: float) -> str:
     return f"{valor:,.0f}".replace(",", ".")
 
@@ -71,6 +110,35 @@ PAGINAS = (
     "Projeção Futuro", "Projeção por Confecção", "Painel Online", "Administração",
 )
 NIVEIS = ("visualizacao", "total", "restrito")
+
+# Cache em memória: evita baixar e converter os mesmos XLSX de novo ao trocar de página.
+# Chave: demanda_id. Valor: {"ts": epoch, "ped": DataFrame, "est": ..., "prod": ..., "derivados": {...}}
+CACHE_DADOS: dict[str, dict] = {}
+CACHE_TTL_SEGUNDOS = 300
+
+
+def cache_validar(demanda_id: str) -> bool:
+    import time
+    item = CACHE_DADOS.get(demanda_id)
+    if not item:
+        return False
+    return (time.time() - item.get("ts", 0)) < CACHE_TTL_SEGUNDOS
+
+
+def cache_guardar(demanda_id: str, ped, est, prod, derivados: dict):
+    import time
+    CACHE_DADOS[demanda_id] = {
+        "ts": time.time(), "ped": ped, "est": est, "prod": prod,
+        "derivados": derivados,
+    }
+
+
+def cache_limpar(demanda_id: str = ""):
+    if demanda_id:
+        CACHE_DADOS.pop(demanda_id, None)
+    else:
+        CACHE_DADOS.clear()
+
 
 # ============================ ESTADO ============================
 
@@ -227,6 +295,7 @@ class State(rx.State):
         try:
             r = api("arquivo_salvar", _usuario=self.usuario, _senha=self.senha, demanda_id=self.demanda_id, tipo=tipo,
                     base64=base64.b64encode(dados).decode())
+            cache_limpar(self.demanda_id)
             self.aviso(f"{tipo}.xlsx enviado." if r.get("ok") else r.get("erro", "Erro"),
                        "success" if r.get("ok") else "error")
         except Exception as e:
@@ -234,34 +303,44 @@ class State(rx.State):
 
     # ---------- carregamento de dados ----------
     def carregar_dados(self):
+        self._carregar(forcado=False)
+
+    def _carregar(self, forcado):
+        """Carrega os dados da demanda. Usa cache em memória por 5 min;
+        `forcado=True` (botão Atualizar) baixa tudo de novo."""
         if not self.demanda_id:
             self.aviso("Selecione uma demanda antes de carregar.", "error")
             return
+
+        # ---------- cache hit ----------
+        if not forcado and cache_validar(self.demanda_id):
+            item = CACHE_DADOS[self.demanda_id]
+            d = item["derivados"]
+            self.pedidos = d["pedidos"]
+            self.compra_itens = d["compra_itens"]
+            self.compra_resumo = d["compra_resumo"]
+            self.total_compra = d["total_compra"]
+            self.capacidade = d["capacidade"]
+            self.por_confeccao = d["por_confeccao"]
+            self.por_status = d["por_status"]
+            self.por_prioridade = d["por_prioridade"]
+            self.info_ped = d["info_ped"]
+            self.info_est = d["info_est"]
+            self.info_prod = d["info_prod"]
+            self.diagnostico = "⚡ Dados do cache (instantâneo). Use Atualizar para recarregar."
+            self.aviso("", "info")
+            return
+
         self.carregando = True
-        self.diagnostico = f"Carregando demanda {self.demanda_id} ..."
-        ped = pd.DataFrame()
-        est = pd.DataFrame()
-        prod = pd.DataFrame()
-        erros = []
-
-        def ler(tipo):
-            try:
-                r = api("arquivo_ler", _usuario=self.usuario, _senha=self.senha,
-                        demanda_id=self.demanda_id, tipo=tipo)
-                if not r.get("ok"):
-                    erros.append(f"{tipo}: {r.get('erro', 'sem resposta')}")
-                    return pd.DataFrame()
-                conteudo = base64.b64decode(r.get("base64", ""))
-                df = ler_xlsx(conteudo)
-                return df
-            except Exception as exc:
-                erros.append(f"{tipo}: {exc}")
-                return pd.DataFrame()
-
+        self.diagnostico = "Baixando arquivos da demanda ..."
         try:
-            ped = ler("pedidos")
-            est = ler("estoque")
-            prod = ler("producao")
+            dfs, erros, modo = buscar_arquivos(
+                self.demanda_id, self.usuario, self.senha
+            )
+            ped = dfs.get("pedidos", pd.DataFrame())
+            est = dfs.get("estoque", pd.DataFrame())
+            prod = dfs.get("producao", pd.DataFrame())
+
             self.info_ped = f"{len(ped)} linhas" if not ped.empty else "vazio/ausente"
             self.info_est = f"{len(est)} linhas" if not est.empty else "vazio/ausente"
             self.info_prod = f"{len(prod)} linhas" if not prod.empty else "vazio/ausente"
@@ -273,13 +352,25 @@ class State(rx.State):
             self.por_status = self._agrupar(self.pedidos, "Status")
             self.por_prioridade = self._agrupar(self.pedidos, "Prioridade")
 
+            derivados = {
+                "pedidos": self.pedidos, "compra_itens": self.compra_itens,
+                "compra_resumo": self.compra_resumo, "total_compra": self.total_compra,
+                "capacidade": self.capacidade, "por_confeccao": self.por_confeccao,
+                "por_status": self.por_status, "por_prioridade": self.por_prioridade,
+                "info_ped": self.info_ped, "info_est": self.info_est, "info_prod": self.info_prod,
+            }
+            cache_guardar(self.demanda_id, ped, est, prod, derivados)
+
             if erros:
-                self.diagnostico = " | ".join(erros)
-                self.aviso("Alguns arquivos não carregaram: " + "; ".join(erros), "error")
+                self.diagnostico = f"Modo {modo} · " + " | ".join(
+                    f"{k}: {v}" for k, v in erros.items()
+                )
+                self.aviso("Alguns arquivos não carregaram: " + "; ".join(
+                    f"{k}: {v}" for k, v in erros.items()), "error")
             else:
                 self.diagnostico = (
-                    f"OK · pedidos {self.info_ped} · estoque {self.info_est} · "
-                    f"produção {self.info_prod} · {len(self.pedidos)} cards no quadro"
+                    f"⚡ {modo} · pedidos {self.info_ped} · estoque {self.info_est} · "
+                    f"produção {self.info_prod} · {len(self.pedidos)} cards"
                 )
                 self.aviso("", "info")
         except Exception as e:
@@ -287,6 +378,11 @@ class State(rx.State):
             self.aviso(f"Erro ao processar: {e}", "error")
         finally:
             self.carregando = False
+
+    def atualizar_dados(self):
+        """Força recarregamento (invalida cache)."""
+        cache_limpar(self.demanda_id)
+        self._carregar(forcado=True)
 
     def testar_conexao(self):
         try:
@@ -536,6 +632,7 @@ def seletor_demanda() -> rx.Component:
                       on_change=State.selecionar_demanda,
                       placeholder="Selecione a demanda", width="320px"),
             rx.button("Carregar dados", on_click=State.carregar_dados),
+            rx.button("Atualizar", on_click=State.atualizar_dados, variant="soft"),
             rx.cond(State.carregando, rx.spinner()),
             spacing="3", width="100%", wrap="wrap",
         ),

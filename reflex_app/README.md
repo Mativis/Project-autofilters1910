@@ -53,6 +53,29 @@ Abra `http://localhost:3000`.
 
 `python -m reflex compile` → **App compiled successfully** (21/20).
 
+## Performance — métodos de carregamento
+
+Implementados para deixar o carregamento o mais rápido possível:
+
+1. **Chamada em lote (principal)**: `arquivos_ler` no Apps Script devolve os 3 XLSX
+   de uma vez (1 ida ao servidor em vez de 3). O backend antigo é detectado
+   automaticamente.
+2. **Fallback paralelo**: se o backend não tiver `arquivos_ler`, as 3 leituras
+   acontecem em paralelo (`ThreadPoolExecutor`), reduzindo o tempo total ao do
+   arquivo mais lento.
+3. **Cache em memória (TTL 5 min)**: após o primeiro carregamento, trocar entre
+   Kanban / Compra / Dashboards / Projeção é **instantâneo** — os DataFrames e as
+   agregações ficam em `CACHE_DADOS`, sem nova chamada à API.
+4. **Invalidação inteligente**: enviar/atualizar qualquer XLSX limpa o cache da
+   demanda; o botão **Atualizar** força recarregamento.
+5. **Carregamento independente por arquivo**: se `producao.xlsx` faltar, pedidos e
+   estoque continuam carregando e o erro aparece no diagnóstico.
+6. **Feedback na tela**: badges com contagem de linhas e modo usado (`lote` ou
+   `paralelo`), além do spinner durante o download.
+
+> O backend precisa ser **reimplantado** para expor `arquivos_ler` (versão 1.1.0).
+> Sem isso, o app usa automaticamente o modo paralelo — também funciona.
+
 ## Diagnóstico de carregamento
 
 O seletor de demanda agora mostra:
