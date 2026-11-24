@@ -53,6 +53,20 @@ Abra `http://localhost:3000`.
 
 `python -m reflex compile` → **App compiled successfully** (21/20).
 
+## Diagnóstico de carregamento
+
+O seletor de demanda agora mostra:
+- botões **Testar conexão** (ping na API) e **Ver arquivos enviados**;
+- uma linha de diagnóstico com o retorno da API/erro;
+- badges com a contagem de linhas de `pedidos`, `estoque` e `produção`.
+
+Cada arquivo é carregado de forma independente: se um falhar, os demais continuam
+funcionando e o erro aparece no aviso.
+
+> Causa raiz corrigida: a normalização de código removia o zero de `24539.0`
+> (virava `245390`), enquanto o estoque tinha `24539`. Agora usa a mesma regra do
+> Streamlit (`24539.0 → 24539`), então os pedidos voltam a casar com o estoque.
+
 ## Proteção de rotas e permissões
 
 - Todas as páginas internas chamam `verificar_login()` no `on_load` e redirecionam

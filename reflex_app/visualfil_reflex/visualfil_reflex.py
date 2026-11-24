@@ -21,15 +21,17 @@ import requests
 # ============================ API ============================
 
 
-def api(action: str, **dados: Any) -> dict:
+def api(action: str, _usuario: str = "", _senha: str = "", **dados: Any) -> dict:
+    """Chama a API. _usuario/_senha são as credenciais de quem chama;
+    `dados` são os parâmetros da ação (podem incluir 'usuario' para cadastro)."""
     url = os.getenv("VFCLOUD_URL", "")
     if not url:
         return {"ok": False, "erro": "Configure VFCLOUD_URL no arquivo run.bat (URL do Web App)."}
     corpo = {
         "action": action,
-        "usuario": os.getenv("VFCLOUD_USUARIO", ""),
-        "senha": os.getenv("VFCLOUD_SENHA", ""),
         **dados,
+        "usuario": _usuario or os.getenv("VFCLOUD_USUARIO", ""),
+        "senha": _senha if _senha else os.getenv("VFCLOUD_SENHA", ""),
     }
     resposta = requests.post(url, json=corpo, timeout=180)
     resposta.raise_for_status()
@@ -37,9 +39,22 @@ def api(action: str, **dados: Any) -> dict:
 
 
 def normalizar_cod(valor: Any) -> str:
-    texto = unicodedata.normalize("NFKD", str(valor or ""))
-    texto = "".join(c for c in texto if not unicodedata.combining(c))
-    return re.sub(r"\D", "", texto).lstrip("0")
+    """Normaliza código para comparação (ex.: 24539.0 -> '24539')."""
+    if valor is None:
+        return ""
+    try:
+        if pd.isna(valor):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    try:
+        num = float(valor)
+        if num == int(num):
+            return str(int(num))
+    except (TypeError, ValueError):
+        pass
+    texto = str(valor).strip()
+    return texto[:-2] if texto.endswith(".0") else texto
 
 
 def ler_xlsx(conteudo: bytes) -> pd.DataFrame:
@@ -91,6 +106,10 @@ class State(rx.State):
     por_confeccao: list[dict] = []
     por_status: list[dict] = []
     por_prioridade: list[dict] = []
+    diagnostico: str = ""
+    info_ped: str = "—"
+    info_est: str = "—"
+    info_prod: str = "—"
 
     # admin
     usuarios: list[dict] = []
@@ -128,7 +147,7 @@ class State(rx.State):
         try:
             os.environ["VFCLOUD_USUARIO"] = self.usuario.strip()
             os.environ["VFCLOUD_SENHA"] = self.senha
-            r = api("login")
+            r = api("login", _usuario=self.usuario.strip(), _senha=self.senha)
             if r.get("ok"):
                 self.logado = True
                 self.admin = bool(r.get("admin"))
@@ -162,7 +181,7 @@ class State(rx.State):
         if verificacao:
             return verificacao
         try:
-            r = api("demandas_listar")
+            r = api("demandas_listar", _usuario=self.usuario, _senha=self.senha)
             self.demandas = r.get("demandas", [])
             self.demanda_opcoes = [
                 str(d.get("nome", "")) or str(d.get("id", "")) for d in self.demandas
@@ -181,7 +200,7 @@ class State(rx.State):
             self.aviso("Informe o nome da demanda.", "error")
             return
         try:
-            r = api("demanda_salvar", nome=self.nova_demanda.strip(),
+            r = api("demanda_salvar", _usuario=self.usuario, _senha=self.senha, nome=self.nova_demanda.strip(),
                     fonte=self.nova_fonte.strip())
             if r.get("ok"):
                 self.nova_demanda = ""
@@ -206,7 +225,7 @@ class State(rx.State):
         if tipo not in TIPOS:
             tipo = "pedidos"
         try:
-            r = api("arquivo_salvar", demanda_id=self.demanda_id, tipo=tipo,
+            r = api("arquivo_salvar", _usuario=self.usuario, _senha=self.senha, demanda_id=self.demanda_id, tipo=tipo,
                     base64=base64.b64encode(dados).decode())
             self.aviso(f"{tipo}.xlsx enviado." if r.get("ok") else r.get("erro", "Erro"),
                        "success" if r.get("ok") else "error")
@@ -216,27 +235,81 @@ class State(rx.State):
     # ---------- carregamento de dados ----------
     def carregar_dados(self):
         if not self.demanda_id:
-            self.aviso("Selecione uma demanda.", "error")
+            self.aviso("Selecione uma demanda antes de carregar.", "error")
             return
         self.carregando = True
-        try:
-            def ler(tipo):
-                r = api("arquivo_ler", demanda_id=self.demanda_id, tipo=tipo)
-                return ler_xlsx(base64.b64decode(r["base64"])) if r.get("ok") else pd.DataFrame()
+        self.diagnostico = f"Carregando demanda {self.demanda_id} ..."
+        ped = pd.DataFrame()
+        est = pd.DataFrame()
+        prod = pd.DataFrame()
+        erros = []
 
-            ped, est = ler("pedidos"), ler("estoque")
+        def ler(tipo):
+            try:
+                r = api("arquivo_ler", _usuario=self.usuario, _senha=self.senha,
+                        demanda_id=self.demanda_id, tipo=tipo)
+                if not r.get("ok"):
+                    erros.append(f"{tipo}: {r.get('erro', 'sem resposta')}")
+                    return pd.DataFrame()
+                conteudo = base64.b64decode(r.get("base64", ""))
+                df = ler_xlsx(conteudo)
+                return df
+            except Exception as exc:
+                erros.append(f"{tipo}: {exc}")
+                return pd.DataFrame()
+
+        try:
+            ped = ler("pedidos")
+            est = ler("estoque")
             prod = ler("producao")
+            self.info_ped = f"{len(ped)} linhas" if not ped.empty else "vazio/ausente"
+            self.info_est = f"{len(est)} linhas" if not est.empty else "vazio/ausente"
+            self.info_prod = f"{len(prod)} linhas" if not prod.empty else "vazio/ausente"
+
             self.pedidos = self._montar_kanban(ped, est)
             self.compra_itens, self.compra_resumo, self.total_compra = self._montar_compra(est)
             self.capacidade = self._montar_capacidade(prod)
             self.por_confeccao = self._agrupar(self.pedidos, "Confecção")
             self.por_status = self._agrupar(self.pedidos, "Status")
-            self.por_prioridade = self._agrupar(self.pedidos, "Prioridade") if self.pedidos and "Prioridade" in self.pedidos[0] else []
-            self.aviso("", "info")
+            self.por_prioridade = self._agrupar(self.pedidos, "Prioridade")
+
+            if erros:
+                self.diagnostico = " | ".join(erros)
+                self.aviso("Alguns arquivos não carregaram: " + "; ".join(erros), "error")
+            else:
+                self.diagnostico = (
+                    f"OK · pedidos {self.info_ped} · estoque {self.info_est} · "
+                    f"produção {self.info_prod} · {len(self.pedidos)} cards no quadro"
+                )
+                self.aviso("", "info")
         except Exception as e:
-            self.aviso(str(e), "error")
+            self.diagnostico = f"Erro geral: {e}"
+            self.aviso(f"Erro ao processar: {e}", "error")
         finally:
             self.carregando = False
+
+    def testar_conexao(self):
+        try:
+            r = api("ping", _usuario=self.usuario, _senha=self.senha)
+            self.diagnostico = f"Ping: {r}"
+            self.aviso("API respondeu: " + str(r.get("versao", "ok")), "success")
+        except Exception as e:
+            self.diagnostico = f"Ping falhou: {e}"
+            self.aviso(str(e), "error")
+
+    def ver_arquivos(self):
+        if not self.demanda_id:
+            self.aviso("Selecione uma demanda.", "error")
+            return
+        try:
+            r = api("arquivos_listar", _usuario=self.usuario, _senha=self.senha,
+                    demanda_id=self.demanda_id)
+            self.arquivos_info = r.get("arquivos", [])
+            self.diagnostico = "Arquivos: " + ", ".join(
+                f"{a.get('nome')} ({a.get('tamanho')}b)" for a in self.arquivos_info
+            ) or "Nenhum arquivo enviado para esta demanda."
+        except Exception as e:
+            self.aviso(str(e), "error")
 
     def _agrupar(self, dados: list[dict], chave: str) -> list[dict]:
         if not dados:
@@ -288,8 +361,14 @@ class State(rx.State):
         kb = ped[ped["_cod"].isin(codigos)].copy()
         out = []
         for _, r in kb.iterrows():
+            v_pedido = r.get("Compra", "")
+            try:
+                if pd.notna(v_pedido) and float(v_pedido) == int(float(v_pedido)):
+                    v_pedido = int(float(v_pedido))
+            except (TypeError, ValueError):
+                pass
             out.append({
-                "Pedido": str(r.get("Compra", "")),
+                "Pedido": str(v_pedido),
                 "Código": str(r.get("_cod", "")),
                 "Item": str(r.get("Confeccionado", ""))[:55],
                 "Confecção": str(r.get("Confecção", "")),
@@ -329,7 +408,7 @@ class State(rx.State):
 
     def salvar_analise(self):
         try:
-            r = api("analise_salvar", demanda_id=self.demanda_id,
+            r = api("analise_salvar", _usuario=self.usuario, _senha=self.senha, demanda_id=self.demanda_id,
                     nome="Análise Reflex", dados_json=__import__("json").dumps(
                         {"resumo": self.compra_resumo, "pedidos": len(self.pedidos)}))
             self.aviso("Análise salva." if r.get("ok") else r.get("erro", "Erro"),
@@ -343,16 +422,16 @@ class State(rx.State):
         if verificacao:
             return verificacao
         try:
-            self.usuarios = api("usuarios_listar").get("usuarios", [])
+            self.usuarios = api("usuarios_listar", _usuario=self.usuario, _senha=self.senha).get("usuarios", [])
             self.usuario_opcoes = [str(u.get("usuario", "")) for u in self.usuarios if u.get("usuario")]
-            self.permissoes = api("permissoes_listar").get("permissoes", [])
+            self.permissoes = api("permissoes_listar", _usuario=self.usuario, _senha=self.senha).get("permissoes", [])
             self.carregar_demandas()
         except Exception as e:
             self.aviso(str(e), "error")
 
     def criar_usuario(self):
         try:
-            r = api("usuario_salvar", usuario=self.novo_usuario.strip(),
+            r = api("usuario_salvar", _usuario=self.usuario, _senha=self.senha, usuario=self.novo_usuario.strip(),
                     nome=self.novo_nome.strip(), senha=self.nova_senha,
                     admin=self.novo_admin, ativo=True)
             if r.get("ok"):
@@ -366,7 +445,7 @@ class State(rx.State):
 
     def salvar_permissao(self):
         try:
-            r = api("permissao_salvar", usuario=self.perm_usuario,
+            r = api("permissao_salvar", _usuario=self.usuario, _senha=self.senha, usuario=self.perm_usuario,
                     pagina=self.perm_pagina, nivel=self.perm_nivel)
             self.aviso("Permissão salva." if r.get("ok") else r.get("erro", "Erro"),
                        "success" if r.get("ok") else "error")
@@ -451,13 +530,28 @@ def tabela(dados: list[dict], colunas: list[str], altura: str = "380px"):
 
 
 def seletor_demanda() -> rx.Component:
-    return rx.hstack(
-        rx.select(State.demanda_opcoes, value=State.demanda_nome,
-                  on_change=State.selecionar_demanda,
-                  placeholder="Selecione a demanda", width="320px"),
-        rx.button("Carregar dados", on_click=State.carregar_dados),
-        rx.cond(State.carregando, rx.spinner()),
-        spacing="3", width="100%",
+    return rx.vstack(
+        rx.hstack(
+            rx.select(State.demanda_opcoes, value=State.demanda_nome,
+                      on_change=State.selecionar_demanda,
+                      placeholder="Selecione a demanda", width="320px"),
+            rx.button("Carregar dados", on_click=State.carregar_dados),
+            rx.cond(State.carregando, rx.spinner()),
+            spacing="3", width="100%", wrap="wrap",
+        ),
+        rx.hstack(
+            rx.button("Testar conexão", on_click=State.testar_conexao, variant="soft", size="2"),
+            rx.button("Ver arquivos enviados", on_click=State.ver_arquivos, variant="soft", size="2"),
+            rx.text(State.diagnostico, size="1", color=TEMA["muted"]),
+            spacing="3", width="100%", wrap="wrap",
+        ),
+        rx.hstack(
+            rx.badge("Pedidos: " + State.info_ped, variant="soft"),
+            rx.badge("Estoque: " + State.info_est, variant="soft"),
+            rx.badge("Produção: " + State.info_prod, variant="soft"),
+            spacing="2", wrap="wrap",
+        ),
+        width="100%", spacing="2",
     )
 
 
