@@ -16,7 +16,7 @@
  * Os XLSX ficam no Google Drive, em VisualfilCloud/<id da demanda>/<tipo>.xlsx
  */
 
-var VF_VERSAO = '1.1.0';
+var VF_VERSAO = '1.2.0';
 var VF_PASTA = 'VisualfilCloud';
 
 function doPost(e) {
@@ -46,6 +46,8 @@ function doPost(e) {
       case 'arquivo_salvar': return _admin(user), _acaoArquivoSalvar(p);
       case 'arquivo_ler': return _acaoArquivoLer(p);
       case 'arquivos_ler': return _acaoArquivosLer(p);
+      case 'agregado_salvar': return _acaoAgregadoSalvar(p);
+      case 'agregado_ler': return _acaoAgregadoLer(p);
       case 'arquivos_listar': return _ok({ arquivos: _listarArquivos(p.demanda_id) });
       case 'usuarios_listar': return _admin(user), _ok({ usuarios: _aba('USUARIOS').getData() });
       case 'usuario_salvar': return _admin(user), _acaoUsuarioSalvar(p);
@@ -178,6 +180,7 @@ function _acaoInicializar(p) {
   _garantirCabecalhos('DEMANDAS', ['id', 'nome', 'fonte', 'criado_em', 'atualizado_em']);
   _garantirCabecalhos('CATALOGO', ['confeccao', 'codigo', 'item', 'tipo', 'tamanho', 'marca', 'atualizado_em']);
   _garantirCabecalhos('ANALISES', ['id', 'demanda_id', 'nome', 'criado_em', 'dados_json']);
+  _garantirCabecalhos('AGREGADOS', ['id', 'demanda_id', 'dados_json', 'atualizado_em']);
 
   var adminUser = String(p.usuario || 'admin').trim();
   var adminSenha = String(p.senha || 'admin').trim();
@@ -308,6 +311,35 @@ function _acaoArquivosLer(p) {
     }
   });
   return _ok({ arquivos: arquivos, erros: erros });
+}
+
+/** Salva o resultado já processado da demanda (pré-agregação). */
+function _acaoAgregadoSalvar(p) {
+  var demanda = String(p.demanda_id || '').trim();
+  if (!demanda) throw new Error('Informe demanda_id.');
+  var id = 'AGG-' + demanda;
+  _aba('AGREGADOS').salvar({
+    id: id,
+    demanda_id: demanda,
+    dados_json: String(p.dados_json || '{}'),
+    atualizado_em: new Date().toISOString()
+  }, 'id', id);
+  return _ok({ id: id });
+}
+
+/** Devolve o resultado pré-agregado (JSON pequeno, sem baixar XLSX). */
+function _acaoAgregadoLer(p) {
+  var demanda = String(p.demanda_id || '').trim();
+  var linhas = _aba('AGREGADOS').getData().filter(function (r) {
+    return String(r.demanda_id || '') === demanda;
+  });
+  if (!linhas.length) throw new Error('Sem pré-agregação para esta demanda.');
+  try {
+    return _ok({ dados: JSON.parse(linhas[0].dados_json || '{}'),
+                 atualizado_em: linhas[0].atualizado_em });
+  } catch (e) {
+    throw new Error('Pré-agregação inválida: ' + e.message);
+  }
 }
 
 function _listarArquivos(id) {

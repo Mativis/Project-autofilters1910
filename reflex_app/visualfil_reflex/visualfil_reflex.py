@@ -100,6 +100,16 @@ def buscar_arquivos(demanda_id: str, usuario: str, senha: str,
     return dfs, erros, "paralelo"
 
 
+def salvar_agregado(demanda_id: str, usuario: str, senha: str, dados: dict) -> dict:
+    import json
+    return api("agregado_salvar", _usuario=usuario, _senha=senha,
+               demanda_id=demanda_id, dados_json=json.dumps(dados, ensure_ascii=False))
+
+
+def ler_agregado(demanda_id: str, usuario: str, senha: str) -> dict:
+    return api("agregado_ler", _usuario=usuario, _senha=senha, demanda_id=demanda_id)
+
+
 def fmt(valor: float) -> str:
     return f"{valor:,.0f}".replace(",", ".")
 
@@ -314,25 +324,26 @@ class State(rx.State):
 
         # ---------- cache hit ----------
         if not forcado and cache_validar(self.demanda_id):
-            item = CACHE_DADOS[self.demanda_id]
-            d = item["derivados"]
-            self.pedidos = d["pedidos"]
-            self.compra_itens = d["compra_itens"]
-            self.compra_resumo = d["compra_resumo"]
-            self.total_compra = d["total_compra"]
-            self.capacidade = d["capacidade"]
-            self.por_confeccao = d["por_confeccao"]
-            self.por_status = d["por_status"]
-            self.por_prioridade = d["por_prioridade"]
-            self.info_ped = d["info_ped"]
-            self.info_est = d["info_est"]
-            self.info_prod = d["info_prod"]
+            self._aplicar_derivados(CACHE_DADOS[self.demanda_id]["derivados"])
             self.diagnostico = "⚡ Dados do cache (instantâneo). Use Atualizar para recarregar."
             self.aviso("", "info")
             return
 
         self.carregando = True
-        self.diagnostico = "Baixando arquivos da demanda ..."
+        self.diagnostico = "Buscando pré-agregação no servidor ..."
+        try:
+            agg = ler_agregado(self.demanda_id, self.usuario, self.senha)
+            if agg.get("ok") and agg.get("dados"):
+                self._aplicar_derivados(agg["dados"])
+                self.diagnostico = (
+                    f"⚡ pré-agregado ({str(agg.get('atualizado_em', ''))[:10]}) · "
+                    f"sem download de XLSX · {len(self.pedidos)} cards"
+                )
+                self.aviso("", "info")
+                return
+        except Exception:
+            pass  # backend antigo ou sem pré-agregação: cai para o download
+
         try:
             dfs, erros, modo = buscar_arquivos(
                 self.demanda_id, self.usuario, self.senha
@@ -360,6 +371,10 @@ class State(rx.State):
                 "info_ped": self.info_ped, "info_est": self.info_est, "info_prod": self.info_prod,
             }
             cache_guardar(self.demanda_id, ped, est, prod, derivados)
+            try:
+                salvar_agregado(self.demanda_id, self.usuario, self.senha, derivados)
+            except Exception:
+                pass  # se o backend não tiver a ação, segue com cache local
 
             if erros:
                 self.diagnostico = f"Modo {modo} · " + " | ".join(
@@ -383,6 +398,19 @@ class State(rx.State):
         """Força recarregamento (invalida cache)."""
         cache_limpar(self.demanda_id)
         self._carregar(forcado=True)
+
+    def _aplicar_derivados(self, d: dict):
+        self.pedidos = d.get("pedidos", [])
+        self.compra_itens = d.get("compra_itens", [])
+        self.compra_resumo = d.get("compra_resumo", [])
+        self.total_compra = d.get("total_compra", "0")
+        self.capacidade = d.get("capacidade", [])
+        self.por_confeccao = d.get("por_confeccao", [])
+        self.por_status = d.get("por_status", [])
+        self.por_prioridade = d.get("por_prioridade", [])
+        self.info_ped = d.get("info_ped", "—")
+        self.info_est = d.get("info_est", "—")
+        self.info_prod = d.get("info_prod", "—")
 
     def testar_conexao(self):
         try:

@@ -57,6 +57,11 @@ Abra `http://localhost:3000`.
 
 Implementados para deixar o carregamento o mais rápido possível:
 
+0. **Pré-agregação no servidor (mais rápido)**: ao processar uma demanda, o resultado
+   já calculado (KPIs, tabelas e agregações) é salvo no Google Sheets via
+   `agregado_salvar`. Nas próximas aberturas, `agregado_ler` devolve só esse JSON
+   pequeno — **nenhum XLSX é baixado nem convertido**. Se não houver pré-agregação,
+   o app cai automaticamente para o lote/paralelo.
 1. **Chamada em lote (principal)**: `arquivos_ler` no Apps Script devolve os 3 XLSX
    de uma vez (1 ida ao servidor em vez de 3). O backend antigo é detectado
    automaticamente.
@@ -73,8 +78,9 @@ Implementados para deixar o carregamento o mais rápido possível:
 6. **Feedback na tela**: badges com contagem de linhas e modo usado (`lote` ou
    `paralelo`), além do spinner durante o download.
 
-> O backend precisa ser **reimplantado** para expor `arquivos_ler` (versão 1.1.0).
-> Sem isso, o app usa automaticamente o modo paralelo — também funciona.
+> O backend precisa ser **reimplantado** para expor `arquivos_ler` e
+> `agregado_salvar`/`agregado_ler` (versão 1.2.0). Sem isso, o app usa lote ou
+> paralelo e recalcula localmente — também funciona.
 
 ## Diagnóstico de carregamento
 
