@@ -218,7 +218,7 @@ except Exception:
 modo_carregamento = ""
 with st.status("Carregando dados otimizados…", expanded=False) as status:
     if not forcar and cloud.cache_validar(demanda_id):
-        dados = cloud.cache_ler(demanda_id)
+        dados = _desserializar(cloud.cache_ler(demanda_id))
         modo_carregamento = "cache em memória ⚡"
         status.update(label="Cache local", state="complete")
     else:
@@ -265,6 +265,16 @@ compra_itens = dados["compra_itens"]
 compra_resumo = dados["compra_resumo"]
 total_compra = dados["total_compra"]
 capacidade = dados["capacidade"]
+
+# garante DataFrames mesmo se vier algo inesperado do cache/JSON
+if not isinstance(kb, pd.DataFrame):
+    kb = pd.DataFrame(kb or [])
+if not isinstance(compra_itens, pd.DataFrame):
+    compra_itens = pd.DataFrame(compra_itens or [])
+if not isinstance(compra_resumo, pd.DataFrame):
+    compra_resumo = pd.DataFrame(compra_resumo or [])
+if not isinstance(capacidade, pd.DataFrame):
+    capacidade = pd.DataFrame(capacidade or [])
 
 st.caption(f"🚀 Modo de carregamento: **{modo_carregamento}**")
 
