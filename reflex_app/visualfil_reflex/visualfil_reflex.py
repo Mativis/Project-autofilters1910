@@ -86,6 +86,12 @@ class State(rx.State):
     total_compra: str = "0"
     carregando: bool = False
 
+    # dashboards / projeção
+    capacidade: list[dict] = []
+    por_confeccao: list[dict] = []
+    por_status: list[dict] = []
+    por_prioridade: list[dict] = []
+
     # admin
     usuarios: list[dict] = []
     usuario_opcoes: list[str] = []
@@ -140,10 +146,21 @@ class State(rx.State):
         self.compra_itens = []
         return rx.redirect("/")
 
-    # ---------- demandas ----------
-    def carregar_demandas(self):
+    def verificar_login(self):
         if not self.logado:
             return rx.redirect("/")
+
+    def verificar_admin(self):
+        if not self.logado:
+            return rx.redirect("/")
+        if not self.admin:
+            return rx.redirect("/kanban")
+
+    # ---------- demandas ----------
+    def carregar_demandas(self):
+        verificacao = self.verificar_login()
+        if verificacao:
+            return verificacao
         try:
             r = api("demandas_listar")
             self.demandas = r.get("demandas", [])
@@ -208,13 +225,50 @@ class State(rx.State):
                 return ler_xlsx(base64.b64decode(r["base64"])) if r.get("ok") else pd.DataFrame()
 
             ped, est = ler("pedidos"), ler("estoque")
+            prod = ler("producao")
             self.pedidos = self._montar_kanban(ped, est)
             self.compra_itens, self.compra_resumo, self.total_compra = self._montar_compra(est)
+            self.capacidade = self._montar_capacidade(prod)
+            self.por_confeccao = self._agrupar(self.pedidos, "Confecção")
+            self.por_status = self._agrupar(self.pedidos, "Status")
+            self.por_prioridade = self._agrupar(self.pedidos, "Prioridade") if self.pedidos and "Prioridade" in self.pedidos[0] else []
             self.aviso("", "info")
         except Exception as e:
             self.aviso(str(e), "error")
         finally:
             self.carregando = False
+
+    def _agrupar(self, dados: list[dict], chave: str) -> list[dict]:
+        if not dados:
+            return []
+        mapa: dict[str, dict] = {}
+        for item in dados:
+            k = str(item.get(chave, "")) or "—"
+            if k not in mapa:
+                mapa[k] = {"Grupo": k, "Pedidos": 0, "Unidades": 0.0}
+            mapa[k]["Pedidos"] += 1
+            mapa[k]["Unidades"] += float(item.get("Saldo", 0) or 0)
+        out = list(mapa.values())
+        out.sort(key=lambda x: x["Unidades"], reverse=True)
+        return out
+
+    def _montar_capacidade(self, prod: pd.DataFrame) -> list[dict]:
+        if prod.empty:
+            return []
+        col_conf = next((c for c in prod.columns if "fornecedor" in str(c).lower()), None)
+        col_qtd = next((c for c in prod.columns
+                        if "qtd" in str(c).lower() and "retorn" in str(c).lower()), None)
+        col_cod = next((c for c in prod.columns if "cód" in str(c).lower() and "confec" in str(c).lower()), None)
+        if not col_conf or not col_qtd:
+            return []
+        p = prod.copy()
+        p["_qtd"] = pd.to_numeric(p[col_qtd], errors="coerce").fillna(0)
+        g = p.groupby(col_conf).agg(
+            Retornos=("_qtd", "sum"),
+            Itens=(col_cod, "nunique") if col_cod else ("_qtd", "count"),
+        ).reset_index().sort_values("Retornos", ascending=False)
+        return [{"Confecção": str(r[col_conf]), "Retornos": float(r["Retornos"]),
+                 "Itens": int(r["Itens"])} for _, r in g.iterrows()][:100]
 
     def _montar_kanban(self, ped: pd.DataFrame, est: pd.DataFrame) -> list[dict]:
         if ped.empty or est.empty:
@@ -243,6 +297,7 @@ class State(rx.State):
                 "Qtd": float(pd.to_numeric(r.get("Qtd"), errors="coerce") or 0),
                 "Saldo": float(pd.to_numeric(r.get("Saldo"), errors="coerce") or 0),
                 "Status": str(r.get("Status", "")),
+                "Prioridade": str(r.get("Prioridade", "") or "Baixa"),
             })
         return out[:500]
 
@@ -284,8 +339,9 @@ class State(rx.State):
 
     # ---------- admin ----------
     def carregar_admin(self):
-        if not self.logado or not self.admin:
-            return rx.redirect("/")
+        verificacao = self.verificar_admin()
+        if verificacao:
+            return verificacao
         try:
             self.usuarios = api("usuarios_listar").get("usuarios", [])
             self.usuario_opcoes = [str(u.get("usuario", "")) for u in self.usuarios if u.get("usuario")]
@@ -353,6 +409,10 @@ def shell(conteudo: rx.Component) -> rx.Component:
                 rx.link(rx.hstack(rx.text("📋"), rx.text("Kanban")), href="/kanban",
                         color="white", width="100%"),
                 rx.link(rx.hstack(rx.text("🛒"), rx.text("Compra sugerida")), href="/compra",
+                        color="white", width="100%"),
+                rx.link(rx.hstack(rx.text("📊"), rx.text("Dashboards")), href="/dashboards",
+                        color="white", width="100%"),
+                rx.link(rx.hstack(rx.text("📅"), rx.text("Projeção")), href="/projecao",
                         color="white", width="100%"),
                 rx.cond(State.admin,
                         rx.link(rx.hstack(rx.text("⚙️"), rx.text("Administração")),
@@ -536,6 +596,60 @@ def admin_page():
                 ),
                 width="100%",
             ),
+            width="100%", spacing="4",
+        )
+    )
+
+
+@rx.page(route="/dashboards", title="Dashboards — Visualfil", on_load=State.carregar_demandas)
+def dashboards_page():
+    return shell(
+        rx.vstack(
+            rx.heading("📊 Dashboards de pedidos", size="7"),
+            seletor_demanda(),
+            rx.hstack(
+                metrica("Pedidos no quadro", rx.text(State.pedidos.length()), "na demanda"),
+                metrica("Confecções", rx.text(State.por_confeccao.length()), "com pedidos", "#0891b2"),
+                metrica("Status", rx.text(State.por_status.length()), "diferentes", "#7c3aed"),
+                metrica("Prioridades", rx.text(State.por_prioridade.length()), "faixas", "#ea580c"),
+                width="100%", spacing="3",
+            ),
+            rx.heading("Por confecção", size="5"),
+            tabela(State.por_confeccao, ["Grupo", "Pedidos", "Unidades"], "240px"),
+            rx.hstack(
+                rx.vstack(rx.heading("Por status", size="5"),
+                          tabela(State.por_status, ["Grupo", "Pedidos", "Unidades"], "220px"),
+                          width="50%"),
+                rx.vstack(rx.heading("Por prioridade", size="5"),
+                          tabela(State.por_prioridade, ["Grupo", "Pedidos", "Unidades"], "220px"),
+                          width="50%"),
+                width="100%", spacing="4",
+            ),
+            width="100%", spacing="4",
+        )
+    )
+
+
+@rx.page(route="/projecao", title="Projeção — Visualfil", on_load=State.carregar_demandas)
+def projecao_page():
+    return shell(
+        rx.vstack(
+            rx.heading("📅 Projeção por confecção", size="7"),
+            seletor_demanda(),
+            rx.hstack(
+                metrica("Confecções com histórico", rx.text(State.capacidade.length()),
+                        "no arquivo de produção", "#7c3aed"),
+                rx.vstack(
+                    rx.text("Capacidade semanal = volume retornado por confecção no histórico online.",
+                            color=TEMA["muted"], size="2"),
+                    width="100%",
+                ),
+                width="100%", spacing="4",
+            ),
+            rx.heading("Capacidade por confecção", size="5"),
+            tabela(State.capacidade, ["Confecção", "Retornos", "Itens"]),
+            rx.heading("Compra sugerida × capacidade", size="5"),
+            tabela(State.compra_resumo, ["Confecção", "Itens", "Compra"], "260px"),
             width="100%", spacing="4",
         )
     )

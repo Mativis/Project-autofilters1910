@@ -35,6 +35,8 @@ Abra `http://localhost:3000`.
   paginação, busca e ordenação no cliente.
 - **`/compra`** — compra sugerida: total, resumo por confecção, tabela discriminada
   por item e botão para salvar a análise no banco online.
+- **`/dashboards`** — KPIs e agregações por confecção, status e prioridade.
+- **`/projecao`** — capacidade semanal por confecção (histórico online) e compra sugerida × capacidade.
 - **`/admin`** (somente admin) — abas:
   - **Demandas**: criar demanda com nome/fonte (Remessa), selecionar demanda e
     enviar/atualizar XLSX (pedidos, estoque, producao, projecao) por drag-and-drop;
@@ -51,7 +53,14 @@ Abra `http://localhost:3000`.
 
 `python -m reflex compile` → **App compiled successfully** (21/20).
 
-## Diferenças em relação ao Streamlit
+## Proteção de rotas e permissões
+
+- Todas as páginas internas chamam `verificar_login()` no `on_load` e redirecionam
+  para `/` quando não há sessão.
+- `/admin` chama `verificar_admin()` e redireciona para `/kanban` se não for administrador.
+- O backend Cloud guarda níveis por usuário/página (`visualizacao`, `total`, `restrito`);
+  o painel Admin permite configurá-los. A aplicação desses níveis no Reflex é o
+  próximo passo (hoje a proteção cobre login e admin).
 
 | Item | Streamlit | Reflex |
 |---|---|---|
