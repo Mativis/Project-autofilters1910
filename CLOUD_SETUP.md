@@ -6,7 +6,9 @@ Sistema com usuários, demandas salvas online e atualização de XLSX via Google
 
 1. Abra o editor do Apps Script (https://script.google.com).
 2. Crie um novo projeto e cole o conteúdo de `appscript/VisualfilCloud.gs`.
-3. **Implantar → Nova implantação → App da Web**:
+3. Vincule o projeto a uma planilha (ou, em projeto avulso, defina a propriedade
+   de script `VF_SPREADSHEET_ID` com o ID da planilha).
+4. **Implantar → Nova implantação → App da Web**:
    - Executar como: **Eu**
    - Quem tem acesso: **Qualquer pessoa**
 4. Copie a URL terminada em `/exec`.

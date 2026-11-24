@@ -16,12 +16,17 @@
  * Os XLSX ficam no Google Drive, em VisualfilCloud/<id da demanda>/<tipo>.xlsx
  */
 
-var VF_VERSAO = '1.0.0';
+var VF_VERSAO = '1.0.1';
 var VF_PASTA = 'VisualfilCloud';
 
 function doPost(e) {
   try {
-    var p = e && e.postData && e.postData.contents ? JSON.parse(e.postData.contents) : {};
+    var evt = e || {};
+    var post = evt.postData || {};
+    var bruto = post.contents || '{}';
+    var p;
+    try { p = JSON.parse(bruto) || {}; }
+    catch (erroPayload) { throw new Error('Payload inválido: ' + String(bruto).slice(0, 80)); }
     var acao = String(p.action || '').toLowerCase();
     var usuario = String(p.usuario || p.user || '').trim();
     var senha = String(p.senha || '').trim();
@@ -64,6 +69,13 @@ function doGet(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+/** Executar uma vez no editor do Apps Script para criar planilhas e o admin. */
+function inicializar() {
+  var r = _acaoInicializar({ usuario: 'admin', senha: 'admin' });
+  Logger.log(r.getContent());
+  return r;
+}
+
 /* ============================== utilitários ============================== */
 
 function _ok(obj) {
@@ -76,7 +88,17 @@ function _sha(texto) {
   return bytes.map(function (b) { return ('0' + ((b & 0xff).toString(16))).slice(-2); }).join('');
 }
 
-function _planilha() { return SpreadsheetApp.getActiveSpreadsheet(); }
+function _planilha() {
+  // Funciona tanto em projeto vinculado a uma planilha quanto em projeto avulso:
+  // nesse último, defina VF_SPREADSHEET_ID nas Propriedades do Script.
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('VF_SPREADSHEET_ID');
+  var ss = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    throw new Error('Planilha não encontrada. Vincule o projeto a uma planilha ou defina VF_SPREADSHEET_ID nas propriedades do script.');
+  }
+  return ss;
+}
 
 function _aba(nome) {
   var ss = _planilha();
@@ -137,7 +159,7 @@ function _autenticar(usuario, senha) {
   var hash = _sha(usuario.toLowerCase() + ':' + senha);
   var users = _aba('USUARIOS').getData();
   for (var i = 0; i < users.length; i++) {
-    var u = users[i];
+    var u = users[i] || {};
     if (String(u.usuario || '').toLowerCase() === usuario.toLowerCase() &&
         String(u.senha_sha || '') === hash &&
         String(u.ativo || 'SIM').toUpperCase() !== 'NAO') {
@@ -159,7 +181,7 @@ function _acaoInicializar(p) {
   var adminUser = String(p.usuario || 'admin').trim();
   var adminSenha = String(p.senha || 'admin').trim();
   var users = _aba('USUARIOS').getData();
-  var existe = users.some(function (u) { return String(u.usuario || '') === adminUser; });
+  var existe = users.some(function (u) { return u && String(u.usuario || '') === adminUser; });
   if (!existe) {
     _aba('USUARIOS').salvar({
       usuario: adminUser,
@@ -285,7 +307,7 @@ function _acaoUsuarioSalvar(p) {
     admin: p.admin ? 'SIM' : 'NAO',
     ativo: p.ativo === false ? 'NAO' : 'SIM'
   };
-  var existente = _aba('USUARIOS').getData().filter(function (u) { return String(u.usuario || '') === usuario; })[0];
+  var existente = _aba('USUARIOS').getData().filter(function (u) { return u && String(u.usuario || '') === usuario; })[0] || null;
   if (!p.senha && existente) registro.senha_sha = existente.senha_sha;
   _aba('USUARIOS').salvar(registro, 'usuario', usuario);
   return _ok({ usuario: usuario });
