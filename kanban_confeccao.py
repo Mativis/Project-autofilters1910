@@ -270,6 +270,7 @@ def pagina_kanban():
             table.kb-sheet td.kb-date { white-space: nowrap; font-variant-numeric: tabular-nums; }
             table.kb-sheet td.kb-desc-cell { min-width: 280px; }
             table.kb-sheet td.kb-conf-cell { color: var(--kb-text-soft); white-space: nowrap; }
+            table.kb-sheet td.kb-marca-cell { color: var(--kb-text-soft); font-size: 0.78rem; white-space: nowrap; }
             table.kb-sheet tr.row-atrasado td:first-child { box-shadow: inset 3px 0 0 var(--kb-atrasado); }
             table.kb-sheet tr.row-alta td:first-child { box-shadow: inset 3px 0 0 var(--kb-alta); }
             table.kb-sheet tr.row-media td:first-child { box-shadow: inset 3px 0 0 var(--kb-media); }
@@ -425,9 +426,19 @@ def pagina_kanban():
     codigos_saldo2_neg = codigos_saldo2_negativo(df_estoque)
     mapa_saldo2 = saldo2_por_codigo(df_estoque)
 
+    # Marca do item conforme o arquivo de Estoque (chave: Cód Confec normalizado)
+    mapa_marca = {}
+    if "Marca" in df_estoque.columns:
+        for cod, marca in zip(
+            df_estoque["Cód Confec"].map(normalizar_cod), df_estoque["Marca"]
+        ):
+            if cod and pd.notna(marca) and str(marca).strip():
+                mapa_marca[cod] = str(marca).strip()
+
     # 2) Filtrar Pedidos pelo Cód Confec
     df_pedidos["Cód Confec_norm"] = df_pedidos["Cód Confec"].map(normalizar_cod)
     df_kanban = df_pedidos[df_pedidos["Cód Confec_norm"].isin(codigos_saldo2_neg)].copy()
+    df_kanban["Marca"] = df_kanban["Cód Confec_norm"].map(mapa_marca).fillna("—")
 
     # 3) Preparar colunas exibidas no kanban (dados somente de Pedidos)
     df_kanban["Dt Entrega"] = pd.to_datetime(df_kanban["Dt Entrega"], errors="coerce")
@@ -490,6 +501,15 @@ def pagina_kanban():
             ),
         )
 
+        opcoes_marca = sorted(m for m in df_kanban["Marca"].unique() if str(m).strip())
+        marcas_sel = st.multiselect(
+            "Marca",
+            options=opcoes_marca,
+            default=opcoes_marca,
+            key="kb_marcas",
+            help="Marca do item conforme o arquivo de Estoque.",
+        )
+
         termo_busca = st.text_input("Buscar por código ou descrição:", value="")
 
         st.markdown("---")
@@ -538,6 +558,8 @@ def pagina_kanban():
     df_filtrado = df_base[df_base["Confecção"].isin(confeccoes_sel)].copy()
     df_filtrado = df_filtrado[df_filtrado["Prioridade"].isin(prioridades_sel)]
     df_filtrado = df_filtrado[df_filtrado["Classificacao"].isin(classificacoes_sel)]
+    if marcas_sel:
+        df_filtrado = df_filtrado[df_filtrado["Marca"].isin(marcas_sel)]
 
     if termo_busca.strip():
         termo = termo_busca.strip().lower()
@@ -659,6 +681,7 @@ def pagina_kanban():
             dias_txt = html.escape(texto_dias(row["Dt Entrega"]))
             etapa = str(row.get("Classificacao", SEM_CLASSIFICACAO))
             etapa_cls = classe_rastreabilidade(etapa)
+            marca = html.escape(str(row.get("Marca", "—")))
 
             linhas.append(
                 f'<tr class="row-{cls}">'
@@ -672,6 +695,7 @@ def pagina_kanban():
                 f'<td><span class="kb-stage">'
                 f'<span class="kb-stage-dot {etapa_cls}"></span>{html.escape(etapa)}</span></td>'
                 f'<td><span class="kb-badge {cls}">{prio_txt}</span></td>'
+                f'<td class="kb-marca-cell">{marca}</td>'
                 "</tr>"
             )
 
@@ -688,13 +712,14 @@ def pagina_kanban():
             "<th>Data de Entrega</th>"
             "<th>Classificação</th>"
             "<th>Prioridade</th>"
+            "<th>Marca</th>"
             "</tr></thead>"
             "<tbody>" + "".join(linhas) + "</tbody>"
             "<tfoot><tr>"
             f'<td colspan="4">Total ({len(df_col)} item(ns))</td>'
             f'<td class="kb-num">{fmt_num(df_col["Saldo"].sum())}</td>'
             f'<td class="kb-num kb-qe">{fmt_num(df_col["Q.E"].sum())}</td>'
-            '<td colspan="3"></td>'
+            '<td colspan="4"></td>'
             "</tr></tfoot>"
             "</table></div>"
         )
@@ -772,6 +797,7 @@ def pagina_kanban():
         tfoot td.num.qe { color: #b26a00; background: #fdeeda; }
         td.dt { white-space: nowrap; }
         td.conf { white-space: nowrap; }
+        td.marca { white-space: nowrap; color: #5a6172; font-size: 9.5px; }
         td.desc { min-width: 220px; }
         .dias { display: block; font-size: 9.5px; font-weight: 600; color: #7a8194; }
         .badge {
@@ -892,6 +918,7 @@ def pagina_kanban():
                     f'<span class="dias">{html.escape(texto_dias(row["Dt Entrega"]))}</span></td>'
                     f'<td><span class="stage {etapa_cls}">{html.escape(etapa)}</span></td>'
                     f'<td><span class="badge {cls}">{prio_txt}</span></td>'
+                    f'<td class="marca">{html.escape(str(row.get("Marca", "—")))}</td>'
                     "</tr>"
                 )
 
@@ -900,14 +927,14 @@ def pagina_kanban():
                 "<thead><tr>"
                 "<th>Pedido</th><th>Cód Confec</th><th>Descrição</th><th>Confecção</th>"
                 '<th class="num-h">Quantidade</th><th class="num-h">Q.E</th>'
-                "<th>Data de Entrega</th><th>Classificação</th><th>Prioridade</th>"
+                "<th>Data de Entrega</th><th>Classificação</th><th>Prioridade</th><th>Marca</th>"
                 "</tr></thead>"
                 "<tbody>" + "".join(linhas) + "</tbody>"
                 "<tfoot><tr>"
                 f'<td colspan="4">Total ({len(d)} item(ns))</td>'
                 f'<td class="num">{total_un}</td>'
                 f'<td class="num qe">{fmt_num(d["Q.E"].sum())}</td>'
-                '<td colspan="3"></td>'
+                '<td colspan="4"></td>'
                 "</tr></tfoot>"
                 "</table>"
             )
@@ -1314,20 +1341,21 @@ def pagina_kanban():
             (6, 6, 16),
             (7, 7, 18),
             (8, 8, 14),
+            (9, 9, 14),
         ]
         for ini, fim, larg in larguras:
             ws.set_column(ini, fim, larg)
 
         # ---------- Cabeçalho da folha ----------
         ws.set_row(0, 30)
-        ws.merge_range(0, 0, 0, 8, f"📌 Kanban de Confecção — {confeccao}", f_titulo)
+        ws.merge_range(0, 0, 0, 9, f"📌 Kanban de Confecção — {confeccao}", f_titulo)
 
         ws.set_row(1, 18)
         ws.merge_range(
             1,
             0,
             1,
-            8,
+            9,
             f"Itens do Estoque localizados nos Pedidos pelo Cód Confec  ·  "
             f"Data de referência: {date.today().strftime('%d/%m/%Y')}  ·  "
             f"{n_linhas} pedido(s)  ·  {fmt_num(df_col['Saldo'].sum())} unidade(s)  ·  "
@@ -1369,6 +1397,7 @@ def pagina_kanban():
         ws.write(linha_head, 6, "DATA DE ENTREGA", f_head_centro)
         ws.write(linha_head, 7, "CLASSIFICAÇÃO", f_head_centro)
         ws.write(linha_head, 8, "PRIORIDADE", f_head_centro)
+        ws.write(linha_head, 9, "MARCA", f_head)
 
         # ---------- Linhas ----------
         for i, (_, row) in enumerate(linhas):
@@ -1413,6 +1442,7 @@ def pagina_kanban():
                 etapa = SEM_CLASSIFICACAO
             ws.write(r, 7, etapa, f_badge_etapa[etapa])
             ws.write(r, 8, texto_prio, f_badge[prio])
+            ws.write(r, 9, str(row.get("Marca", "—")), f_celula_conf_alt if alt else f_celula_conf)
 
         # ---------- Total ----------
         linha_total = linha_head + 1 + n_linhas
@@ -1422,10 +1452,10 @@ def pagina_kanban():
         )
         ws.write_number(linha_total, 4, float(df_col["Saldo"].sum()), f_total_num)
         ws.write_number(linha_total, 5, float(df_col["Q.E"].sum()), f_total_qe)
-        ws.merge_range(linha_total, 6, linha_total, 8, "", f_total_vazio)
+        ws.merge_range(linha_total, 6, linha_total, 9, "", f_total_vazio)
 
         # ---------- Aparência / impressão ----------
-        ws.autofilter(linha_head, 0, linha_total - 1, 8)
+        ws.autofilter(linha_head, 0, linha_total - 1, 9)
         ws.freeze_panes(linha_head + 1, 0)
         ws.hide_gridlines(2)
         ws.set_landscape()
@@ -1433,7 +1463,7 @@ def pagina_kanban():
         ws.fit_to_pages(1, 0)
         ws.repeat_rows(linha_head)
         ws.set_margins(0.4, 0.4, 0.5, 0.4)
-        ws.print_area(0, 0, linha_total, 8)
+        ws.print_area(0, 0, linha_total, 9)
         ws.set_zoom(90)
 
         workbook.close()
@@ -1565,6 +1595,7 @@ def pagina_kanban():
                                     "Q.E",
                                     "Dt Entrega",
                                     "Prioridade",
+                                    "Marca",
                                 )
                                 if coluna in detalhe_kanban.columns
                             ]
@@ -1611,6 +1642,9 @@ def pagina_kanban():
                             "Prioridade": st.column_config.TextColumn(
                                 "Prioridade", width="small"
                             ),
+                            "Marca": st.column_config.TextColumn(
+                                "Marca", width="small"
+                            ),
                         },
                     )
 
@@ -1634,6 +1668,7 @@ def pagina_kanban():
             "Dt Entrega",
             "Prioridade",
             "Confecção",
+            "Marca",
         ]
     ].copy()
     df_tabela = df_tabela.rename(
@@ -1671,6 +1706,7 @@ def pagina_kanban():
                 "Data de Entrega": st.column_config.DateColumn("Data de Entrega", format="DD/MM/YYYY"),
                 "Prioridade": st.column_config.TextColumn("Prioridade", width="small"),
                 "Confecção": st.column_config.TextColumn("Confecção", width="large"),
+                "Marca": st.column_config.TextColumn("Marca", width="small"),
             },
         )
 
