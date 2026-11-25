@@ -54,6 +54,12 @@ if forcar:
 
 
 # ============================ CARREGAMENTO OTIMIZADO ============================
+def _para_df(conteudo):
+    if isinstance(conteudo, pd.DataFrame):
+        return conteudo
+    return pd.read_excel(io.BytesIO(conteudo))
+
+
 def _calcular(ped_raw, est_raw, prod_raw, catalogo_df):
     """Devolve dict com tudo que a página exibe."""
     pedidos = (
@@ -237,18 +243,9 @@ with st.status("Carregando dados otimizados…", expanded=False) as status:
             arquivos, erros, modo = cloud.arquivos_ler(
                 demanda_id, ("pedidos", "estoque", "producao")
             )
-            ped_raw = (
-                pd.read_excel(io.BytesIO(arquivos["pedidos"]))
-                if "pedidos" in arquivos else None
-            )
-            est_raw = (
-                pd.read_excel(io.BytesIO(arquivos["estoque"]))
-                if "estoque" in arquivos else None
-            )
-            prod_raw = (
-                pd.read_excel(io.BytesIO(arquivos["producao"]))
-                if "producao" in arquivos else None
-            )
+            ped_raw = _para_df(arquivos["pedidos"]) if "pedidos" in arquivos else None
+            est_raw = _para_df(arquivos["estoque"]) if "estoque" in arquivos else None
+            prod_raw = _para_df(arquivos["producao"]) if "producao" in arquivos else None
             dados = _calcular(ped_raw, est_raw, prod_raw, catalogo_df)
             cloud.cache_guardar(demanda_id, _serializar(dados))
             try:

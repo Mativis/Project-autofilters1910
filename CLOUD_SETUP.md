@@ -48,6 +48,18 @@ Ou preencha URL/usuário/senha na própria tela de login (fica salvo na sessão)
      `Tec Faz "x" Confec`) e capacidade semanal quando `producao.xlsx` existe;
    - botão para **salvar a análise** no banco online.
 
+## 7. Armazenamento em planilhas + arquivamento (backend 1.3.0)
+
+- No upload, além do XLSX no Drive, as linhas são escritas em **abas da planilha
+  principal** (`D_<demanda>_<tipo>`). A leitura passa a ser direta do GSheets
+  (rápida), sem baixar/converter o XLSX.
+- O painel **Administração → Demandas** tem os botões **📦 Arquivar demanda** e
+  **↩️ Desarquivar demanda**:
+  - **Arquivar** copia as abas para uma planilha separada na pasta `VisualfilArquivado`
+    do Drive, remove as abas da planilha principal e marca `arquivada = SIM`.
+    Leitura mais lenta, mas mantém o histórico fora do arquivo principal.
+  - **Desarquivar** traz as abas de volta para o GSheets principal.
+
 ## 6. Performance (versão do backend 1.2.0)
 
 O backend expõe `arquivos_ler` (lote), `agregado_salvar` e `agregado_ler`

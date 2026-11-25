@@ -70,9 +70,14 @@ def buscar_arquivos(demanda_id: str, usuario: str, senha: str,
             demanda_id=demanda_id, tipos=list(tipos))
     if r.get("ok") and "arquivos" in r:
         dfs, erros = {}, dict(r.get("erros", {}))
-        for tipo, b64 in r["arquivos"].items():
+        for tipo, conteudo in r["arquivos"].items():
             try:
-                dfs[tipo] = ler_xlsx(base64.b64decode(b64))
+                if isinstance(conteudo, dict) and "colunas" in conteudo:
+                    dfs[tipo] = pd.DataFrame(conteudo["linhas"], columns=conteudo["colunas"])
+                elif isinstance(conteudo, dict):
+                    dfs[tipo] = ler_xlsx(base64.b64decode(conteudo["base64"]))
+                else:
+                    dfs[tipo] = ler_xlsx(base64.b64decode(conteudo))
             except Exception as exc:
                 erros[tipo] = str(exc)
         return dfs, erros, "lote"
@@ -86,6 +91,8 @@ def buscar_arquivos(demanda_id: str, usuario: str, senha: str,
                        demanda_id=demanda_id, tipo=tipo)
             if not resp.get("ok"):
                 return tipo, None, resp.get("erro", "sem resposta")
+            if resp.get("colunas") is not None:
+                return tipo, pd.DataFrame(resp["linhas"], columns=resp["colunas"]), None
             return tipo, ler_xlsx(base64.b64decode(resp.get("base64", ""))), None
         except Exception as exc:
             return tipo, None, str(exc)
@@ -303,7 +310,15 @@ class State(rx.State):
         if tipo not in TIPOS:
             tipo = "pedidos"
         try:
+            try:
+                df_up = pd.read_excel(io.BytesIO(dados))
+                colunas = [str(c) for c in df_up.columns]
+                linhas = [[str(v) if v is not None else "" for v in row]
+                          for row in df_up.itertuples(index=False, name=None)]
+            except Exception:
+                colunas, linhas = [], []
             r = api("arquivo_salvar", _usuario=self.usuario, _senha=self.senha, demanda_id=self.demanda_id, tipo=tipo,
+                    colunas=colunas, linhas=linhas,
                     base64=base64.b64encode(dados).decode())
             cache_limpar(self.demanda_id)
             self.aviso(f"{tipo}.xlsx enviado." if r.get("ok") else r.get("erro", "Erro"),

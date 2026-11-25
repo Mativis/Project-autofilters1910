@@ -132,6 +132,10 @@ with aba_demandas:
         demandas = []
     if demandas:
         st.dataframe(pd.DataFrame(demandas), width="stretch", hide_index=True)
+        st.caption(
+            "Planilhas vinculadas ficam no GSheets principal (leitura rápida). "
+            "Ao arquivar, elas são movidas para uma pasta no Drive (leitura mais lenta)."
+        )
     else:
         st.info("Nenhuma demanda cadastrada.")
 
@@ -196,6 +200,28 @@ with aba_demandas:
             cloud.excluir_demanda(did)
             st.warning("Demanda excluída.")
             st.rerun()
+
+        demanda_atual = next((d for d in demandas if d.get("id") == did), {})
+        arquivada = str(demanda_atual.get("arquivada", "")).upper() == "SIM"
+        ca, cd = st.columns(2)
+        with ca:
+            if not arquivada and st.button("📦 Arquivar demanda", type="secondary"):
+                r = cloud.arquivar_demanda(did)
+                cloud.cache_limpar(did)
+                if r.get("ok"):
+                    st.success("Demanda arquivada: planilhas movidas para o Drive.")
+                else:
+                    st.error(r.get("erro", "Erro ao arquivar."))
+                st.rerun()
+        with cd:
+            if arquivada and st.button("↩️ Desarquivar demanda", type="secondary"):
+                r = cloud.desarquivar_demanda(did)
+                cloud.cache_limpar(did)
+                if r.get("ok"):
+                    st.success("Demanda desarquivada: planilhas voltaram ao GSheets.")
+                else:
+                    st.error(r.get("erro", "Erro ao desarquivar."))
+                st.rerun()
 
 # ============================== CATÁLOGO ==============================
 with aba_catalogo:

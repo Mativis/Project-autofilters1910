@@ -16,7 +16,7 @@
  * Os XLSX ficam no Google Drive, em VisualfilCloud/<id da demanda>/<tipo>.xlsx
  */
 
-var VF_VERSAO = '1.2.0';
+var VF_VERSAO = '1.3.0';
 var VF_PASTA = 'VisualfilCloud';
 
 function doPost(e) {
@@ -43,6 +43,8 @@ function doPost(e) {
       case 'demandas_listar': return _ok({ demandas: _aba('DEMANDAS').getData() });
       case 'demanda_salvar': return _admin(user), _acaoDemandaSalvar(p);
       case 'demanda_excluir': return _admin(user), _acaoDemandaExcluir(p);
+      case 'demanda_arquivar': return _admin(user), _acaoDemandaArquivar(p);
+      case 'demanda_desarquivar': return _admin(user), _acaoDemandaDesarquivar(p);
       case 'arquivo_salvar': return _admin(user), _acaoArquivoSalvar(p);
       case 'arquivo_ler': return _acaoArquivoLer(p);
       case 'arquivos_ler': return _acaoArquivosLer(p);
@@ -177,7 +179,7 @@ function _autenticar(usuario, senha) {
 function _acaoInicializar(p) {
   _garantirCabecalhos('USUARIOS', ['usuario', 'senha_sha', 'nome', 'admin', 'ativo']);
   _garantirCabecalhos('PERMISSOES', ['id', 'usuario', 'pagina', 'nivel']);
-  _garantirCabecalhos('DEMANDAS', ['id', 'nome', 'fonte', 'criado_em', 'atualizado_em']);
+  _garantirCabecalhos('DEMANDAS', ['id', 'nome', 'fonte', 'criado_em', 'atualizado_em', 'arquivada', 'arquivo_id']);
   _garantirCabecalhos('CATALOGO', ['confeccao', 'codigo', 'item', 'tipo', 'tamanho', 'marca', 'atualizado_em']);
   _garantirCabecalhos('ANALISES', ['id', 'demanda_id', 'nome', 'criado_em', 'dados_json']);
   _garantirCabecalhos('AGREGADOS', ['id', 'demanda_id', 'dados_json', 'atualizado_em']);
@@ -253,6 +255,135 @@ function _pastaDemanda(id, criar) {
   return criar ? raiz.createFolder(String(id)) : null;
 }
 
+/* ================= planilhas vinculadas (rápido) ================= */
+
+var PASTA_ARQUIVO = 'VisualfilArquivado';
+
+function _nomeAba(demandaId, tipo) {
+  var raw = 'D_' + String(demandaId || '').replace(/[^A-Za-z0-9_-]/g, '_') + '_' + String(tipo || '');
+  return raw.slice(0, 100);
+}
+
+function _abaOuCriar(nome) {
+  var sh = _planilha().getSheetByName(nome);
+  if (!sh) sh = _planilha().insertSheet(nome);
+  return sh;
+}
+
+function _demandaArquivada(id) {
+  var d = _aba('DEMANDAS').getData().filter(function (x) { return String(x.id || '') === String(id || ''); })[0] || {};
+  return String(d.arquivada || '').toUpperCase() === 'SIM';
+}
+
+function _escreverAba(demandaId, tipo, colunas, linhas) {
+  var sh = _abaOuCriar(_nomeAba(demandaId, tipo));
+  sh.clear();
+  var head = colunas || [];
+  var corpo = linhas || [];
+  var nCol = Math.max(1, head.length, corpo.length ? (corpo[0] || []).length : 1);
+  var valores = [head];
+  corpo.forEach(function (linha) {
+    var l = [];
+    for (var c = 0; c < nCol; c++) l.push(linha[c] === undefined ? '' : linha[c]);
+    valores.push(l);
+  });
+  sh.getRange(1, 1, valores.length, nCol).setValues(valores);
+  return { linhas: corpo.length, colunas: nCol };
+}
+
+function _lerAba(demandaId, tipo) {
+  var nome = _nomeAba(demandaId, tipo);
+  var sh = _planilha().getSheetByName(nome);
+  if (!sh || sh.getLastRow() < 1) return null;
+  var vals = sh.getDataRange().getValues();
+  if (!vals.length) return null;
+  var colunas = vals[0].map(function (v) { return String(v || ''); });
+  var linhas = vals.slice(1).filter(function (r) {
+    return r.some(function (v) { return String(v || '').trim() !== ''; });
+  });
+  return { colunas: colunas, linhas: linhas };
+}
+
+function _pastaArquivo(criar) {
+  var pastas = DriveApp.getFoldersByName(PASTA_ARQUIVO);
+  if (pastas.hasNext()) return pastas.next();
+  return criar ? DriveApp.createFolder(PASTA_ARQUIVO) : null;
+}
+
+function _tabArquivo(id) {
+  var nome = 'VisualfilArquivo_' + String(id || '').replace(/[^A-Za-z0-9_-]/g, '_');
+  var arquivos = DriveApp.getFilesByName(nome);
+  if (arquivos.hasNext()) return SpreadsheetApp.open(arquivos.next());
+  return SpreadsheetApp.create(nome);
+}
+
+function _acaoDemandaArquivar(p) {
+  var id = String(p.demanda_id || p.id || '').trim();
+  if (!id) throw new Error('Informe a demanda.');
+  if (_demandaArquivada(id)) return _ok({ id: id, arquivada: true });
+
+  var destino = _tabArquivo(id);
+  var tipos = ['pedidos', 'estoque', 'producao', 'projecao'];
+  tipos.forEach(function (tipo) {
+    var dados = _lerAba(id, tipo);
+    if (!dados) return;
+    var nome = _nomeAba(id, tipo);
+    var sh = destino.getSheetByName(nome) || destino.insertSheet(nome);
+    sh.clear();
+    var valores = [dados.colunas].concat(dados.linhas);
+    sh.getRange(1, 1, valores.length, Math.max(1, dados.colunas.length)).setValues(valores);
+    var original = _planilha().getSheetByName(nome);
+    if (original) _planilha().deleteSheet(original);
+  });
+
+  // move o arquivo para a pasta de arquivados
+  var file = DriveApp.getFileById(destino.getId());
+  var pasta = _pastaArquivo(true);
+  pasta.addFile(file);
+  var raiz = DriveApp.getRootFolder();
+  if (raiz.getFiles().hasNext()) {
+    try { raiz.removeFile(file); } catch (e) { /* já estava na pasta */ }
+  }
+
+  var d = _aba('DEMANDAS').getData().filter(function (x) { return String(x.id || '') === id; })[0] || {};
+  d.arquivada = 'SIM';
+  d.arquivo_id = destino.getId();
+  d.atualizado_em = new Date().toISOString();
+  _aba('DEMANDAS').salvar(d, 'id', id);
+  return _ok({ id: id, arquivada: true, arquivo_id: destino.getId() });
+}
+
+function _acaoDemandaDesarquivar(p) {
+  var id = String(p.demanda_id || p.id || '').trim();
+  if (!id) throw new Error('Informe a demanda.');
+  var d = _aba('DEMANDAS').getData().filter(function (x) { return String(x.id || '') === id; })[0] || {};
+  var arquivoId = String(d.arquivo_id || '');
+  if (arquivoId) {
+    try {
+      var destino = SpreadsheetApp.openById(arquivoId);
+      ['pedidos', 'estoque', 'producao', 'projecao'].forEach(function (tipo) {
+        var dados = _lerArquivoAba(destino, _nomeAba(id, tipo));
+        if (!dados) return;
+        _escreverAba(id, tipo, dados.colunas, dados.linhas);
+      });
+      DriveApp.getFileById(arquivoId).setTrashed(true);
+    } catch (e) { /* arquivo pode ter sido removido */ }
+  }
+  d.arquivada = 'NAO';
+  d.arquivo_id = '';
+  d.atualizado_em = new Date().toISOString();
+  _aba('DEMANDAS').salvar(d, 'id', id);
+  return _ok({ id: id, arquivada: false });
+}
+
+function _lerArquivoAba(spreadsheet, nome) {
+  var sh = spreadsheet.getSheetByName(nome);
+  if (!sh || sh.getLastRow() < 1) return null;
+  var vals = sh.getDataRange().getValues();
+  return { colunas: vals[0].map(function (v) { return String(v || ''); }),
+           linhas: vals.slice(1) };
+}
+
 var TIPOS_OK = ['pedidos', 'estoque', 'producao', 'projecao'];
 
 function _acaoArquivoSalvar(p) {
@@ -269,6 +400,11 @@ function _acaoArquivoSalvar(p) {
   if (arquivos.hasNext()) arquivos.next().setContent(blob);
   else pasta.createFile(blob);
 
+  // se o cliente enviou linhas, grava também numa aba da planilha principal (leitura rápida)
+  if (p.linhas && p.colunas) {
+    _escreverAba(id, tipo, p.colunas, p.linhas);
+  }
+
   // atualiza stamp da demanda
   var d = _aba('DEMANDAS').getData().filter(function (x) { return String(x.id || '') === id; })[0];
   if (d) {
@@ -281,6 +417,10 @@ function _acaoArquivoSalvar(p) {
 function _acaoArquivoLer(p) {
   var id = String(p.demanda_id || '').trim();
   var tipo = String(p.tipo || '').trim().toLowerCase();
+  if (!_demandaArquivada(id)) {
+    var rapido = _lerAba(id, tipo);
+    if (rapido) return _ok({ colunas: rapido.colunas, linhas: rapido.linhas, origem: 'planilha' });
+  }
   var pasta = _pastaDemanda(id, false);
   if (!pasta) throw new Error('Nenhum arquivo para esta demanda.');
   var arquivos = pasta.getFilesByName(tipo + '.xlsx');

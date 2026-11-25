@@ -78,8 +78,8 @@ Implementados para deixar o carregamento o mais rápido possível:
 6. **Feedback na tela**: badges com contagem de linhas e modo usado (`lote` ou
    `paralelo`), além do spinner durante o download.
 
-> O backend precisa ser **reimplantado** para expor `arquivos_ler` e
-> `agregado_salvar`/`agregado_ler` (versão 1.2.0). Sem isso, o app usa lote ou
+> O backend precisa ser **reimplantado** para expor `arquivos_ler`,
+> `agregado_salvar`/`agregado_ler` e `demanda_arquivar` (versão 1.3.0). Sem isso, o app usa lote ou
 > paralelo e recalcula localmente — também funciona.
 
 ## Diagnóstico de carregamento

@@ -77,9 +77,14 @@ def arquivos_ler(demanda_id: str, tipos=("pedidos", "estoque", "producao")):
     r = call("arquivos_ler", demanda_id=demanda_id, tipos=list(tipos), timeout=240)
     if r.get("ok") and "arquivos" in r:
         dados, erros = {}, dict(r.get("erros", {}))
-        for tipo, b64 in r["arquivos"].items():
+        for tipo, conteudo in r["arquivos"].items():
             try:
-                dados[tipo] = base64.b64decode(b64)
+                if isinstance(conteudo, dict) and "colunas" in conteudo:
+                    dados[tipo] = _df_de_linhas(conteudo.get("colunas"), conteudo.get("linhas"))
+                elif isinstance(conteudo, dict) and "base64" in conteudo:
+                    dados[tipo] = base64.b64decode(conteudo["base64"])
+                else:
+                    dados[tipo] = base64.b64decode(conteudo)
             except Exception as exc:
                 erros[tipo] = str(exc)
         return dados, erros, "lote"
@@ -89,6 +94,8 @@ def arquivos_ler(demanda_id: str, tipos=("pedidos", "estoque", "producao")):
             resp = call("arquivo_ler", demanda_id=demanda_id, tipo=tipo, timeout=240)
             if not resp.get("ok"):
                 return tipo, None, resp.get("erro", "sem resposta")
+            if resp.get("colunas") is not None:
+                return tipo, _df_de_linhas(resp.get("colunas"), resp.get("linhas")), None
             return tipo, base64.b64decode(resp.get("base64", "")), None
         except Exception as exc:
             return tipo, None, str(exc)
@@ -260,19 +267,74 @@ def excluir_demanda(id: str) -> dict:
 
 # ============================ arquivos ============================
 
+def _valor_json(v):
+    """Converts numpy/pandas scalars into JSON-safe values for Sheets."""
+    if v is None:
+        return ""
+    try:
+        if pd.isna(v):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    try:
+        import numpy as np
+        if isinstance(v, (np.integer,)):
+            return int(v)
+        if isinstance(v, (np.floating,)):
+            return float(v)
+    except Exception:
+        pass
+    if hasattr(v, "isoformat"):
+        try:
+            return v.isoformat()
+        except Exception:
+            pass
+    return str(v)
+
+
 def salvar_arquivo(demanda_id: str, tipo: str, arquivo_bytes: bytes) -> dict:
+    """Saves the XLSX in Drive AND writes its rows into a sheet tab in the main
+    spreadsheet, so later reads are fast (no XLSX download/parse)."""
+    try:
+        import pandas as pd
+        df = pd.read_excel(io.BytesIO(arquivo_bytes))
+        colunas = [str(c) for c in df.columns]
+        linhas = [[_valor_json(v) for v in row] for row in df.itertuples(index=False, name=None)]
+        # limite de segurança do payload do Apps Script
+        if len(linhas) > 50000:
+            linhas = linhas[:50000]
+    except Exception:
+        colunas, linhas = [], []
     return call(
         "arquivo_salvar",
         demanda_id=demanda_id,
         tipo=tipo,
+        colunas=colunas,
+        linhas=linhas,
         base64=base64.b64encode(arquivo_bytes).decode("ascii"),
         timeout=240,
     )
 
 
-def ler_arquivo(demanda_id: str, tipo: str) -> bytes:
+def _df_de_linhas(colunas, linhas) -> "pd.DataFrame":
+    import pandas as pd
+    return pd.DataFrame(linhas or [], columns=colunas or [])
+
+
+def ler_arquivo(demanda_id: str, tipo: str):
+    """Devolve DataFrame quando a aba rápida existe; bytes do XLSX em fallback."""
     r = call("arquivo_ler", demanda_id=demanda_id, tipo=tipo, timeout=240)
+    if r.get("colunas") is not None:
+        return _df_de_linhas(r.get("colunas"), r.get("linhas"))
     return base64.b64decode(r.get("base64", ""))
+
+
+def arquivar_demanda(demanda_id: str) -> dict:
+    return call("demanda_arquivar", demanda_id=demanda_id, timeout=240)
+
+
+def desarquivar_demanda(demanda_id: str) -> dict:
+    return call("demanda_desarquivar", demanda_id=demanda_id, timeout=240)
 
 
 def listar_arquivos(demanda_id: str) -> list[dict]:
