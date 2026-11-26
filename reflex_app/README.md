@@ -1,122 +1,49 @@
-# Visualfil Reflex — versão paralela profissional
+# Visualfil Reflex
 
-Versão paralela do Visualfil em **Reflex** (Python → React), focada em performance
-e interface mais responsiva. Roda junto com o Streamlit, sem alterá-lo.
+Versão paralela, em **Reflex (React + FastAPI)**, do Visualfil. Usa a mesma API do Google Apps Script (Google Sheets/Drive) para demandas online e também oferece o **Kanban de Confecção offline** com upload local dos XLSX.
 
-## Estrutura
+## O que esta versão entrega
 
+- **Front-end profissional refeito**: design system próprio, navegação lateral, KPIs, estados de carregamento/erro, responsividade.
+- **Kanban de Confecção (offline)**: upload local de `Pedidos.xlsx` e `Estoque.xlsx`, quadro operacional com transições válidas, produção parcial, filtros, Q.E., rastreabilidade, resumo por confecção e exportação CSV/impressão.
+- **Kanban online**: pedidos críticos por demanda (Remessa), lidos da nuvem.
+- **Compra sugerida**: saldo 5 negativo × 1,1 − tecido em estoque, discriminada por item e por confecção.
+- **Dashboards e projeção**: visão por confecção/prioridade e capacidade histórica.
+- **Administração**: demandas, upload de XLSX online, usuários e permissões por página.
+- **Segurança**: credenciais privadas no estado Reflex, login por usuário/senha, permissões aplicadas no cliente e no backend.
+
+## Rodar localmente
+
+```powershell
+cd reflex_app
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy config.example.env .env
+# edite .env com VFCLOUD_URL (URL /exec do Web App)
+.\run.bat
 ```
-reflex_app/
-  run.bat                    # inicializador (configura Node + variáveis)
-  config.example.env         # modelo de configuração
-  rxconfig.py                # tema Radix (índigo) + plugins
-  requirements.txt
-  visualfil_reflex/
-    visualfil_reflex.py      # estado, API e 6 rotas (+ login)
-```
 
-## Como rodar (Windows)
+Ou no PowerShell: `.\run.ps1`
 
-1. Copie `config.example.env` para `.env` e preencha a URL do Web App e as credenciais.
-2. Duplo clique em `run.bat` (ou `.\run.bat` no PowerShell).
+Acesse `http://localhost:3000`.
 
-O script já configura:
-- `PATH` com Node.js (necessário para o frontend);
-- `REACT_ROUTER_DEV_RESTARTED=true` (contorna bug do React Router no Node 26/Windows);
-- variáveis `VFCLOUD_URL`, `VFCLOUD_USUARIO`, `VFCLOUD_SENHA`.
+## Variáveis de ambiente
 
-Abra `http://localhost:3000`.
+- `VFCLOUD_URL` (obrigatória para área online): URL do Web App do Apps Script terminando em `/exec`.
+- `VFCLOUD_USUARIO` / `VFCLOUD_SENHA` (opcionais): apenas fallback; o login normal usa as credenciais digitadas.
 
-## Telas
+## Arquivos importantes
 
-- **`/`** — login com usuário/senha do Visualfil Cloud + avisos de erro/sucesso.
-- **`/kanban`** — Kanban online: seleção de demanda, KPIs e tabela de pedidos
-  (código, item, confecção, marca do estoque, quantidades e status), com
-  paginação, busca e ordenação no cliente.
-- **`/compra`** — compra sugerida: total, resumo por confecção, tabela discriminada
-  por item e botão para salvar a análise no banco online.
-- **`/dashboards`** — KPIs e agregações por confecção, status e prioridade.
-- **`/projecao`** — capacidade semanal por confecção (histórico online) e compra sugerida × capacidade.
-- **`/admin`** (somente admin) — abas:
-  - **Demandas**: criar demanda com nome/fonte (Remessa), selecionar demanda e
-    enviar/atualizar XLSX (pedidos, estoque, producao, projecao) por drag-and-drop;
-  - **Usuários**: criar/editar usuários e senhas, marcar admin;
-  - **Permissões**: definir por usuário/página nível `visualizacao`, `total` ou `restrito`.
+- `visualfil_reflex/visualfil_reflex.py`: estado, chamadas à API, rotas e páginas.
+- `visualfil_reflex/tema.py`: design system/componentes visuais.
+- `visualfil_reflex/dados.py`: regras offline (prioridade, rastreabilidade, Q.E., montagem do quadro).
+- `rxconfig.py`: configuração do Reflex/tema base.
+- `run.bat` / `run.ps1`: inicializadores Windows.
 
-## Design
+## Observações operacionais
 
-- Sidebar escura com navegação, tema índigo (Radix), cards de KPI, tabelas com
-  Paginação/Busca/Ordenação nativas, callouts de feedback e spinner de carregamento.
-- Layout responsivo via Flex/Stack do Reflex.
-
-## Validação
-
-`python -m reflex compile` → **App compiled successfully** (25/24).
-
-## Performance — métodos de carregamento
-
-Implementados para deixar o carregamento o mais rápido possível:
-
-0. **Pré-agregação no servidor (mais rápido)**: ao processar uma demanda, o resultado
-   já calculado (KPIs, tabelas e agregações) é salvo no Google Sheets via
-   `agregado_salvar`. Nas próximas aberturas, `agregado_ler` devolve só esse JSON
-   pequeno — **nenhum XLSX é baixado nem convertido**. Se não houver pré-agregação,
-   o app cai automaticamente para o lote/paralelo.
-1. **Chamada em lote (principal)**: `arquivos_ler` no Apps Script devolve os 3 XLSX
-   de uma vez (1 ida ao servidor em vez de 3). O backend antigo é detectado
-   automaticamente.
-2. **Fallback paralelo**: se o backend não tiver `arquivos_ler`, as 3 leituras
-   acontecem em paralelo (`ThreadPoolExecutor`), reduzindo o tempo total ao do
-   arquivo mais lento.
-3. **Cache em memória (TTL 5 min)**: após o primeiro carregamento, trocar entre
-   Kanban / Compra / Dashboards / Projeção é **instantâneo** — os DataFrames e as
-   agregações ficam em `CACHE_DADOS`, sem nova chamada à API.
-4. **Invalidação inteligente**: enviar/atualizar qualquer XLSX limpa o cache da
-   demanda; o botão **Atualizar** força recarregamento.
-5. **Carregamento independente por arquivo**: se `producao.xlsx` faltar, pedidos e
-   estoque continuam carregando e o erro aparece no diagnóstico.
-6. **Feedback na tela**: badges com contagem de linhas e modo usado (`lote` ou
-   `paralelo`), além do spinner durante o download.
-
-> O backend precisa ser **reimplantado** na versão **1.4.0** para expor
-> `arquivos_ler`, `agregado_salvar`/`agregado_ler`, `demanda_arquivar` e
-> `permissoes_minhas`. Sem isso, o app usa lote/paralelo e recalcula localmente.
-
-## Diagnóstico de carregamento
-
-O seletor de demanda agora mostra:
-- botões **Testar conexão** (ping na API) e **Ver arquivos enviados**;
-- uma linha de diagnóstico com o retorno da API/erro;
-- badges com a contagem de linhas de `pedidos`, `estoque` e `produção`.
-
-Cada arquivo é carregado de forma independente: se um falhar, os demais continuam
-funcionando e o erro aparece no aviso.
-
-> Causa raiz corrigida: a normalização de código removia o zero de `24539.0`
-> (virava `245390`), enquanto o estoque tinha `24539`. Agora usa a mesma regra do
-> Streamlit (`24539.0 → 24539`), então os pedidos voltam a casar com o estoque.
-
-## Proteção de rotas e permissões
-
-- Todas as páginas internas chamam `verificar_login()` no `on_load` e redirecionam
-  para `/` quando não há sessão.
-- `/admin` chama `verificar_admin()` e redireciona para `/kanban` se não for administrador.
-- O backend Cloud aplica os níveis (`visualizacao`, `total`, `restrito`) em todas as
-  ações: leituras exigem visualização, escritas de agregado/análise exigem `total`,
-  e ações administrativas exigem `admin`. O menu do Reflex também filtra rotas.
-- Usuário e senha são **Vars privadas** (não vão ao navegador) e o login usa
-  formulário — a senha não é enviada tecla a tecla para o servidor.
-- O cache em memória é separado por `(usuário, demanda)` e é limpo no logout.
-
-| Item | Streamlit | Reflex |
-|---|---|---|
-| Interação | rerun do script | reatividade no cliente (React) |
-| Tabelas | st.datadataframe | data_table com paginação no front |
-| Login | tela própria | rota `/` com redirecionamento |
-| Admin | página completa | painel com abas no app |
-| Tema | CSS customizado | Radix theme + componentes |
-
-## Próximos passos possíveis
-
-- Deploy no Reflex Cloud ou container Docker;
-- PWA/APK com shell nativo.
+- O Kanban offline **não envia** os XLSX para a nuvem; tudo fica na sessão do navegador/estado local.
+- Para o online funcionar, o Apps Script deve estar implantado na versão atual (v1.4.0) com “Quem tem acesso: Qualquer pessoa”.
+- Se o Streamlit Cloud estiver desatualizado, faça **Reboot app** no painel do Streamlit.
+- Para compilar no Windows: `python -m reflex compile` com `PATH` incluindo `C:\Program Files\nodejs` e `REACT_ROUTER_DEV_RESTARTED=true`.
