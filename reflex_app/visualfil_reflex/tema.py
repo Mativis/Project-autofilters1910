@@ -11,22 +11,26 @@ import reflex as rx
 
 # ---------------------------------------------------------------- paleta
 C: dict[str, str] = {
-    "primary": "#4f46e5",
-    "primary_dark": "#312e81",
-    "primary_soft": "#eef2ff",
-    "bg": "#f6f8fc",
+    # Tendência 2026 aplicada: "Command Center" B2B SaaS — bento/modular,
+    # hierarquia em pirâmide invertida (KPIs -> contexto -> detalhe),
+    # alta densidade com clareza e escala comercial.
+    "primary": "#2563eb",
+    "primary_dark": "#0b1220",
+    "primary_soft": "#dbeafe",
+    "bg": "#f3f6fb",
     "surface": "#ffffff",
+    "surface_alt": "#f8fafc",
     "text": "#0f172a",
     "muted": "#64748b",
-    "border": "#e2e8f0",
-    "success": "#16a34a",
-    "success_soft": "#dcfce7",
+    "border": "#e6edf5",
+    "success": "#059669",
+    "success_soft": "#d1fae5",
     "warning": "#d97706",
     "warning_soft": "#fef3c7",
     "danger": "#dc2626",
     "danger_soft": "#fee2e2",
-    "info": "#0891b2",
-    "info_soft": "#cffafe",
+    "info": "#0284c7",
+    "info_soft": "#e0f2fe",
     "violet": "#7c3aed",
     "violet_soft": "#ede9fe",
 }
@@ -54,34 +58,47 @@ FONTE = "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-
 
 
 def css_global() -> rx.Component:
-    """CSS único para o app inteiro (evita estilos espalhados)."""
+    """CSS global: estilo 'Command Center' B2B, modular e escalável."""
     return rx.el.style(
         f"""
-        * {{ font-family: {FONTE}; }}
+        * {{ font-family: {FONTE}; box-sizing: border-box; }}
         body {{ background: {C['bg']}; color: {C['text']}; margin: 0; }}
-        .vf-card {{ transition: transform .16s ease, box-shadow .16s ease; }}
-        .vf-card:hover {{ transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15,23,42,.08); }}
+        .vf-card {{ transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease; }}
+        .vf-card:hover {{ transform: translateY(-1px); border-color: #bfdbfe; box-shadow: 0 8px 28px rgba(37,99,235,.08); }}
         .vf-nav a {{ text-decoration: none; }}
-        .vf-nav-item {{ transition: background .15s ease, color .15s ease; }}
-        .vf-nav-item:hover {{ background: rgba(255,255,255,.12); }}
-        .vf-chip {{ letter-spacing: .02em; }}
-        .vf-board {{ min-height: 78px; }}
+        .vf-nav-item {{ transition: background .15s ease, color .15s ease, border-color .15s ease; border: 1px solid transparent; }}
+        .vf-nav-item:hover {{ background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.08); }}
+        .vf-chip {{ letter-spacing: .03em; font-weight: 600; }}
+        .vf-board {{ min-height: 84px; }}
+        .vf-surface {{ backdrop-filter: saturate(120%); }}
+        .vf-kpi {{ position: relative; overflow: hidden; }}
+        .vf-kpi:before {{ content:''; position:absolute; top:0; left:0; right:0; height:3px; background: linear-gradient(90deg, rgba(37,99,235,.9), rgba(37,99,235,0)); opacity:.55; }}
         .vf-scroll::-webkit-scrollbar {{ width: 8px; height: 8px; }}
         .vf-scroll::-webkit-scrollbar-thumb {{ background: #cbd5e1; border-radius: 8px; }}
+        .vf-table [data-radix-scroll-area-viewport] {{ background: {C['surface']}; }}
+        @media (max-width: 900px) {{
+            .vf-page-pad {{ padding: 1rem !important; }}
+        }}
         """
     )
 
 
 # ---------------------------------------------------------------- primitivas
 def superficie(*conteudo: rx.Component, **props: Any) -> rx.Component:
+    """Módulo base (bento): reutilizável, com borda suave e raio consistente."""
     estilo = dict(
         background=C["surface"],
         border=f"1px solid {C['border']}",
-        border_radius="14px",
-        box_shadow="0 1px 3px rgba(15,23,42,.04)",
-        padding="1.1rem",
+        border_radius="16px",
+        box_shadow="0 1px 2px rgba(15,23,42,.03)",
+        padding="1.15rem",
         width="100%",
+        class_name="vf-surface",
     )
+    # permite compor class_name sem perder a base
+    extra_class = props.pop("class_name", "")
+    if extra_class:
+        estilo["class_name"] = f"{estilo['class_name']} {extra_class}"
     estilo.update(props)
     return rx.box(*conteudo, **estilo)
 
@@ -89,11 +106,14 @@ def superficie(*conteudo: rx.Component, **props: Any) -> rx.Component:
 def titulo(texto: str, subtitulo: str = "", icone: str = "") -> rx.Component:
     return rx.vstack(
         rx.hstack(
-            rx.icon(icone, size=26, color=C["primary"]) if icone else rx.fragment(),
-            rx.heading(texto, size="7", color=C["text"], font_weight="700"),
+            rx.box(
+                rx.icon(icone, size=20, color=C["primary"]),
+                background=C["primary_soft"], border_radius="10px", padding="0.45rem",
+            ) if icone else rx.fragment(),
+            rx.heading(texto, size="7", color=C["text"], font_weight="700", letter_spacing="-0.02em"),
             align_items="center", spacing="3",
         ),
-        rx.cond(subtitulo, rx.text(subtitulo, size="2", color=C["muted"])),
+        rx.cond(subtitulo, rx.text(subtitulo, size="2", color=C["muted"], line_height="1.5")),
         spacing="1", width="100%",
     )
 
@@ -118,23 +138,26 @@ def kpi(
     icone: str = "chart-column",
     cor: str = C["primary"],
 ) -> rx.Component:
+    fundo = C["primary_soft"] if cor == C["primary"] else f"{cor}14"
     return superficie(
         rx.hstack(
-            rx.box(
-                rx.icon(icone, size=18, color=cor),
-                background="#e0e7ff" if cor == C["primary"] else f"{cor}1a",
-                border_radius="10px", padding="0.55rem",
-            ),
             rx.vstack(
                 rx.text(rotulo, size="1", color=C["muted"], text_transform="uppercase",
-                        letter_spacing=".06em"),
-                rx.heading(valor, size="6", color=C["text"], font_weight="700"),
+                        letter_spacing=".08em", font_weight="600"),
+                rx.heading(valor, size="7", color=C["text"], font_weight="700",
+                           letter_spacing="-0.03em", line_height="1.1"),
                 rx.cond(rodape, rx.text(rodape, size="1", color=C["muted"])),
                 spacing="1", align_items="start", flex="1",
             ),
-            align_items="start", spacing="3", width="100%",
+            rx.box(
+                rx.icon(icone, size=18, color=cor),
+                background=fundo, border_radius="12px", padding="0.6rem",
+                border=f"1px solid {cor}22",
+            ),
+            align_items="start", justify="between", spacing="3", width="100%",
         ),
-        class_name="vf-card",
+        class_name="vf-card vf-kpi",
+        padding="1rem 1.1rem",
     )
 
 
@@ -172,16 +195,20 @@ def prioridade_chip(prioridade: str) -> rx.Component:
 
 def tabela(dados: rx.Component | list[dict], colunas: list[str], altura: str = "360px") -> rx.Component:
     return superficie(
-        rx.data_table(
-            data=dados,
-            columns=colunas,
-            pagination=True,
-            search=True,
-            sort=True,
+        rx.box(
+            rx.data_table(
+                data=dados,
+                columns=colunas,
+                pagination=True,
+                search=True,
+                sort=True,
+                width="100%",
+                height=altura,
+            ),
             width="100%",
-            height=altura,
+            class_name="vf-table",
         ),
-        padding="0.5rem",
+        padding="0.35rem",
     )
 
 
@@ -230,13 +257,16 @@ def _item_nav(rotulo: str, href: str, icone: str, chave: str, ativa: str) -> rx.
     selecionado = chave == ativa
     return rx.link(
         rx.hstack(
-            rx.icon(icone, size=17),
-            rx.text(rotulo, size="2", font_weight="500"),
-            spacing="3", align_items="center",
-            padding="0.55rem 0.75rem",
-            border_radius="9px",
-            color="white" if selecionado else "#c7d2fe",
-            background="rgba(255,255,255,.16)" if selecionado else "transparent",
+            rx.box(width="3px", height="18px", border_radius="3px",
+                   background="#60a5fa" if selecionado else "transparent"),
+            rx.icon(icone, size=17, color="#e2e8f0" if selecionado else "#94a3b8"),
+            rx.text(rotulo, size="2", font_weight="550",
+                    color="#f8fafc" if selecionado else "#cbd5e1"),
+            spacing="2", align_items="center",
+            padding="0.55rem 0.65rem",
+            border_radius="10px",
+            background="rgba(59,130,246,.14)" if selecionado else "transparent",
+            border=f"1px solid {'rgba(59,130,246,.22)' if selecionado else 'transparent'}",
             width="100%",
             class_name="vf-nav-item",
         ),
@@ -248,20 +278,23 @@ def sidebar(ativa: str, nome, admin, state) -> rx.Component:
     return rx.vstack(
         rx.hstack(
             rx.box(
-                rx.icon("zap", size=20, color="white"),
-                background="#6366f1", border_radius="11px", padding="0.45rem",
+                rx.icon("layers-3", size=20, color="white"),
+                background="linear-gradient(135deg, #3b82f6, #2563eb)",
+                border_radius="12px", padding="0.5rem",
+                box_shadow="0 8px 24px rgba(37,99,235,.35)",
             ),
             rx.vstack(
-                rx.text("Visualfil", color="white", font_weight="700", size="4"),
-                rx.text("Produção inteligente", color="#a5b4fc", size="1"),
+                rx.text("Visualfil", color="white", font_weight="700", size="4",
+                        letter_spacing="-0.02em"),
+                rx.text("Production Command Center", color="#93a4bf", size="1"),
                 spacing="0",
             ),
             spacing="3", align_items="center",
         ),
-        rx.divider(color="rgba(255,255,255,.14)", margin_y="0.5rem"),
+        rx.box(height="1px", background="rgba(255,255,255,.08)", width="100%", margin_y="0.4rem"),
         *[
             rx.vstack(
-                rx.text(grupo, size="1", color="#818cf8", letter_spacing=".1em",
+                rx.text(grupo, size="1", color="#64748b", letter_spacing=".12em",
                         font_weight="700", padding_x="0.75rem"),
                 *[
                     rx.cond(
@@ -286,18 +319,19 @@ def sidebar(ativa: str, nome, admin, state) -> rx.Component:
         rx.spacer(),
         rx.box(
             rx.hstack(
-                rx.avatar(fallback=rx.cond(nome, nome, "U"), size="2", color_scheme="indigo"),
+                rx.avatar(fallback=rx.cond(nome, nome, "U"), size="2", color_scheme="blue"),
                 rx.vstack(
-                    rx.text(rx.cond(nome, nome, "Usuário"), color="white", size="2", font_weight="600"),
-                    rx.text(rx.cond(state.admin, "Administrador", "Operador"), color="#a5b4fc", size="1"),
+                    rx.text(rx.cond(nome, nome, "Usuário"), color="#f1f5f9", size="2", font_weight="600"),
+                    rx.text(rx.cond(state.admin, "Administrador", "Operador"), color="#94a3b8", size="1"),
                     spacing="0",
                 ),
                 spacing="2", align_items="center",
             ),
-            width="100%", padding_top="0.75rem", border_top="1px solid rgba(255,255,255,.14)",
+            width="100%", padding="0.75rem", border_radius="12px",
+            background="rgba(255,255,255,.04)", border="1px solid rgba(255,255,255,.06)",
         ),
-        background=f"linear-gradient(180deg, {C['primary_dark']} 0%, #1e1b4b 100%)",
-        min_height="100vh", width="248px", padding="1.1rem", spacing="3",
+        background=f"linear-gradient(180deg, {C['primary_dark']} 0%, #111827 100%)",
+        min_height="100vh", width="256px", padding="1rem", spacing="3",
         flex_shrink="0",
     )
 
@@ -333,20 +367,30 @@ def shell(
                 rx.hstack(
                     rx.vstack(titulo(titulo_pagina, subtitulo), spacing="0"),
                     rx.spacer(),
-                    acoes if acoes is not None else rx.fragment(),
-                    rx.button(
-                        "Sair", on_click=state.sair, variant="soft", color_scheme="gray",
-                        icon="log-out", size="2",
+                    rx.hstack(
+                        acoes if acoes is not None else rx.fragment(),
+                        rx.button(
+                            "Sair", on_click=state.sair, variant="soft", color_scheme="gray",
+                            icon="log-out", size="2",
+                        ),
+                        spacing="2", align_items="center",
                     ),
                     width="100%", align_items="center", spacing="3", wrap="wrap",
-                    padding="1rem 1.5rem",
-                    background=C["surface"], border_bottom=f"1px solid {C['border']}",
+                    padding="1.1rem 1.5rem",
+                    background="rgba(255,255,255,.92)",
+                    border_bottom=f"1px solid {C['border']}",
+                    position="sticky", top="0", z_index="10",
+                    backdrop_filter="blur(10px)",
                 ),
                 rx.box(
-                    conteudo,
-                    aviso_ui(state),
-                    width="100%", padding="1.5rem", spacing="4",
-                    class_name="vf-scroll",
+                    rx.vstack(
+                        aviso_ui(state),
+                        conteudo,
+                        spacing="4", width="100%",
+                        max_width="1680px", margin_x="auto",
+                    ),
+                    width="100%", padding="1.5rem",
+                    class_name="vf-scroll vf-page-pad",
                     flex="1",
                     overflow_y="auto",
                 ),
@@ -361,30 +405,45 @@ def shell(
 def painel_login(formulario: rx.Component) -> rx.Component:
     return rx.vstack(
         rx.hstack(
-            rx.box(rx.icon("zap", size=30, color="white"),
-                   background="rgba(255,255,255,.16)", border_radius="14px", padding="0.7rem"),
-            rx.heading("Visualfil", size="8", color="white"),
+            rx.box(rx.icon("layers-3", size=28, color="white"),
+                   background="linear-gradient(135deg, #3b82f6, #2563eb)",
+                   border_radius="14px", padding="0.7rem",
+                   box_shadow="0 12px 30px rgba(37,99,235,.4)"),
+            rx.vstack(
+                rx.text("Visualfil", size="7", color="white", font_weight="700",
+                        letter_spacing="-0.03em"),
+                rx.text("Production Command Center", size="2", color="#93c5fd"),
+                spacing="0",
+            ),
             spacing="3", align_items="center",
         ),
-        rx.heading("Produção sob controle, de ponta a ponta.", size="6", color="white",
-                   margin_top="2rem"),
+        rx.heading("Visão operacional para escalar produção.", size="7", color="white",
+                   margin_top="2.2rem", letter_spacing="-0.03em", line_height="1.15"),
         rx.text(
-            "Kanban de confecção, compra sugerida, projeção e demandas online "
-            "em uma única plataforma.",
-            color="#c7d2fe", size="3", line_height="1.6",
+            "Kanban offline, demandas online, compra sugerida e projeção em uma "
+            "plataforma modular — pronta para crescer com a operação.",
+            color="#bfdbfe", size="3", line_height="1.7", max_width="520px",
         ),
         rx.vstack(
-            rx.hstack(rx.icon("circle-check", color="#a5b4fc"),
-                      rx.text("Quadro offline com upload local dos XLSX", color="white", size="2")),
-            rx.hstack(rx.icon("circle-check", color="#a5b4fc"),
-                      rx.text("Leitura online por demanda (Remessa)", color="white", size="2")),
-            rx.hstack(rx.icon("circle-check", color="#a5b4fc"),
-                      rx.text("Permissões por usuário e por página", color="white", size="2")),
+            *[
+                rx.hstack(
+                    rx.box(rx.icon(icone, size=16, color="#93c5fd"),
+                           background="rgba(147,197,253,.12)", border_radius="8px", padding="0.35rem"),
+                    rx.text(txt, color="#e2e8f0", size="2"),
+                    spacing="3", align_items="center",
+                )
+                for icone, txt in [
+                    ("layout-dashboard", "Quadro operacional offline com upload local"),
+                    ("cloud", "Demandas online por Remessa, leitura sob demanda"),
+                    ("shield-check", "Permissões por usuário e trilha de ações"),
+                    ("chart-column-increasing", "KPIs, compra sugerida e projeção escalável"),
+                ]
+            ],
             spacing="3", margin_top="1.5rem", align_items="start",
         ),
         formulario,
-        spacing="3", width="100%", max_width="520px",
-        padding="2.5rem",
-        background=f"linear-gradient(145deg, {C['primary']} 0%, {C['primary_dark']} 100%)",
+        spacing="4", width="100%", max_width="560px",
+        padding="3rem",
+        background=f"radial-gradient(ellipse at top left, #1e3a5f 0%, {C['primary_dark']} 55%, #0f172a 100%)",
         min_height="100vh", justify="center",
     )

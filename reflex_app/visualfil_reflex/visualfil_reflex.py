@@ -1006,13 +1006,14 @@ def seletor_demanda() -> rx.Component:
 
 
 def kpis_online() -> rx.Component:
+    # Pirâmide invertida: KPIs no topo, detalhe abaixo.
     return rx.grid(
-        tema.kpi("Pedidos no quadro", State.pedidos.length(), "filtrados por Saldo 2", "package", tema.C["primary"]),
-        tema.kpi("Itens para compra", State.compra_itens.length(), "códigos negativos", "shopping-cart", tema.C["danger"]),
-        tema.kpi("Total sugerido", State.total_compra, "unidades", "coins", tema.C["warning"]),
-        tema.kpi("Confecções", State.por_confeccao.length(), "com pedidos", "users", tema.C["violet"]),
-        columns=rx.breakpoints(initial="1", sm="2", lg="4"),
-        spacing="3", width="100%",
+        tema.kpi("Pedidos críticos", State.pedidos.length(), "Saldo 2 negativo", "package", tema.C["primary"]),
+        tema.kpi("Compra sugerida", State.total_compra, "unidades", "shopping-cart", tema.C["danger"]),
+        tema.kpi("Itens a comprar", State.compra_itens.length(), "códigos", "boxes", tema.C["warning"]),
+        tema.kpi("Confecções", State.por_confeccao.length(), "envolvidas", "factory", tema.C["violet"]),
+        columns=rx.breakpoints(initial="1", sm="2", xl="4"),
+        spacing="4", width="100%",
     )
 
 
@@ -1119,8 +1120,7 @@ def cartao_off(cartao: rx.Component) -> rx.Component:
                     on_change=lambda v: State.selecionar_off(cartao["chave"], v),
                     size="1",
                 ),
-                rx.text("#", size="1", color=tema.C["muted"]),
-                rx.text(cartao["pedido"], size="2", weight="bold"),
+                rx.text(f"#{cartao['pedido']}", size="2", weight="bold", color=tema.C["text"]),
                 rx.spacer(),
                 rx.badge(
                     cartao["dias"],
@@ -1129,9 +1129,9 @@ def cartao_off(cartao: rx.Component) -> rx.Component:
                         ("Atrasado", "red"), ("Alta", "amber"), ("Média", "blue"),
                         ("Baixa", "gray"), "gray",
                     ),
-                    variant="soft", size="1",
+                    variant="soft", size="1", radius="full",
                 ),
-                spacing="1", width="100%", align_items="center",
+                spacing="2", width="100%", align_items="center",
             ),
             rx.text(cartao["item"], size="2", line_clamp="2", weight="medium"),
             rx.hstack(
@@ -1197,9 +1197,9 @@ def cartao_off(cartao: rx.Component) -> rx.Component:
         ),
         background=tema.C["surface"],
         border=f"1px solid {tema.C['border']}",
-        border_left=f"4px solid {cor_status_var(cartao['status'])}",
-        border_radius="12px",
-        padding="0.85rem",
+        border_left=f"3px solid {cor_status_var(cartao['status'])}",
+        border_radius="14px",
+        padding="0.9rem",
         class_name="vf-card",
         width="100%",
     )
@@ -1227,14 +1227,13 @@ def coluna_off(titulo: str, status: str, itens: rx.Component) -> rx.Component:
             width="100%",
         ),
         spacing="2",
-        background="#f8fafc",
+        background=tema.C["surface_alt"],
         border=f"1px solid {tema.C['border']}",
-        border_top=f"3px solid {cor}",
-        border_radius="14px",
-        padding="0.75rem",
+        border_radius="16px",
+        padding="0.8rem",
         class_name="vf-scroll",
-        max_height="620px", overflow_y="auto",
-        flex="1", min_width="270px",
+        max_height="68vh", overflow_y="auto",
+        flex="1", min_width="280px",
     )
 
 
@@ -1372,11 +1371,11 @@ def kpis_off() -> rx.Component:
     return rx.grid(
         tema.kpi("Pedidos", State.off_kpis.get("pedidos", 0), "no quadro", "package", tema.C["primary"]),
         tema.kpi("Peças em aberto", State.off_kpis.get("unidades", 0), "saldo total", "layers", tema.C["info"]),
-        tema.kpi("Atrasados", State.off_kpis.get("atrasado", 0), "prioridade máxima", "triangle-alert", tema.C["danger"]),
-        tema.kpi("Q.E. total", State.off_total_qe, "quantidade emergencial", "zap", tema.C["warning"]),
-        tema.kpi("Confecções", State.off_kpis.get("confeccoes", 0), "no quadro", "users", tema.C["violet"]),
-        columns=rx.breakpoints(initial="2", sm="3", lg="5"),
-        spacing="3", width="100%",
+        tema.kpi("Atrasados", State.off_kpis.get("atrasado", 0), "ação imediata", "triangle-alert", tema.C["danger"]),
+        tema.kpi("Q.E. total", State.off_total_qe, "emergencial", "zap", tema.C["warning"]),
+        tema.kpi("Confecções", State.off_kpis.get("confeccoes", 0), "ativas", "factory", tema.C["violet"]),
+        columns=rx.breakpoints(initial="2", md="3", xl="5"),
+        spacing="4", width="100%",
     )
 
 
