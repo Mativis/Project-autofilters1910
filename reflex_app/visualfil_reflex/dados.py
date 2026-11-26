@@ -374,9 +374,12 @@ def montar_offline(
 
 # ---------------------------------------------------------------- visões online
 def montar_kanban_online(ped: pd.DataFrame, est: pd.DataFrame) -> list[dict]:
-    if ped.empty or est.empty:
+    if ped is None or est is None or ped.empty or est.empty:
         return []
-    ped, est = preparar_pedidos(ped) or ped, preparar_estoque(est) or est
+    ped = preparar_pedidos(ped)
+    est = preparar_estoque(est)
+    if ped is None or est is None or ped.empty or est.empty:
+        return []
     codigos = set(c for c, v in saldo2_por_codigo(est).items() if v < 0)
     marcas = dict(zip(est["_cod"] if "_cod" in est.columns else [],
                       est.get("Marca", pd.Series(dtype=str))))
@@ -419,11 +422,11 @@ def montar_compra(est: pd.DataFrame, catalogo: list[dict] | None = None) -> tupl
     cods = neg["Cód Confec"].map(normalizar_cod)
     confs = cods.map(mapa_conf).fillna("Sem confecção cadastrada")
     itens = [{
-        "Código": str(cod),
+        "Código": str(cods.get(r.name, "")),
         "Item": str(r.get("Descrição", ""))[:55],
         "Saldo 5": float(saldo5.get(r.name, 0)),
-        "Confecção": str(confs.get(r.name, "")),
-        "Tec Faz": float(tec.get(r.name, 0)) if hasattr(tec, "get") else 0.0,
+        "Confecção": str(confs.get(r.name, "Sem confecção cadastrada")),
+        "Tec Faz": float(tec.get(r.name, 0) if hasattr(tec, "get") else tec),
         "Compra": float(compra.get(r.name, 0)),
     } for _, r in neg.iterrows()]
     itens.sort(key=lambda x: x["Compra"], reverse=True)
