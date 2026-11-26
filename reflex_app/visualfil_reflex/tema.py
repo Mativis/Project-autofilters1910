@@ -21,7 +21,7 @@ C: dict[str, str] = {
     "surface": "#ffffff",
     "surface_alt": "#f8fafc",
     "text": "#0f172a",
-    "muted": "#475569",
+    "muted": "#1e293b",
     "border": "#e6edf5",
     "success": "#059669",
     "success_soft": "#d1fae5",
@@ -142,11 +142,11 @@ def kpi(
     return superficie(
         rx.hstack(
             rx.vstack(
-                rx.text(rotulo, size="1", color=C["muted"], text_transform="uppercase",
-                        letter_spacing=".08em", font_weight="600"),
+                rx.text(rotulo, size="1", color="#334155", text_transform="uppercase",
+                        letter_spacing=".08em", font_weight="700"),
                 rx.heading(valor, size="7", color=C["text"], font_weight="700",
                            letter_spacing="-0.03em", line_height="1.1"),
-                rx.cond(rodape, rx.text(rodape, size="1", color=C["muted"])),
+                rx.cond(rodape, rx.text(rodape, size="1", color="#334155")),
                 spacing="1", align_items="start", flex="1",
             ),
             rx.box(
