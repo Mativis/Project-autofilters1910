@@ -1362,8 +1362,8 @@ def barra_lote_off() -> rx.Component:
             spacing="3", align_items="end", width="100%", wrap="wrap",
         ),
         padding="0.8rem",
-        background="#eef2ff",
-        border_color="#c7d2fe",
+        background="#eff6ff",
+        border_color="#bfdbfe",
     )
 
 

@@ -21,7 +21,7 @@ C: dict[str, str] = {
     "surface": "#ffffff",
     "surface_alt": "#f8fafc",
     "text": "#0f172a",
-    "muted": "#64748b",
+    "muted": "#475569",
     "border": "#e6edf5",
     "success": "#059669",
     "success_soft": "#d1fae5",
@@ -259,9 +259,9 @@ def _item_nav(rotulo: str, href: str, icone: str, chave: str, ativa: str) -> rx.
         rx.hstack(
             rx.box(width="3px", height="18px", border_radius="3px",
                    background="#60a5fa" if selecionado else "transparent"),
-            rx.icon(icone, size=17, color="#e2e8f0" if selecionado else "#94a3b8"),
+            rx.icon(icone, size=17, color="#f1f5f9" if selecionado else "#cbd5e1"),
             rx.text(rotulo, size="2", font_weight="550",
-                    color="#f8fafc" if selecionado else "#cbd5e1"),
+                    color="#ffffff" if selecionado else "#e2e8f0"),
             spacing="2", align_items="center",
             padding="0.55rem 0.65rem",
             border_radius="10px",
@@ -286,7 +286,7 @@ def sidebar(ativa: str, nome, admin, state) -> rx.Component:
             rx.vstack(
                 rx.text("Visualfil", color="white", font_weight="700", size="4",
                         letter_spacing="-0.02em"),
-                rx.text("Production Command Center", color="#93a4bf", size="1"),
+                rx.text("Production Command Center", color="#bfdbfe", size="1"),
                 spacing="0",
             ),
             spacing="3", align_items="center",
@@ -294,7 +294,7 @@ def sidebar(ativa: str, nome, admin, state) -> rx.Component:
         rx.box(height="1px", background="rgba(255,255,255,.08)", width="100%", margin_y="0.4rem"),
         *[
             rx.vstack(
-                rx.text(grupo, size="1", color="#64748b", letter_spacing=".12em",
+                rx.text(grupo, size="1", color="#94a3b8", letter_spacing=".12em",
                         font_weight="700", padding_x="0.75rem"),
                 *[
                     rx.cond(
@@ -322,7 +322,7 @@ def sidebar(ativa: str, nome, admin, state) -> rx.Component:
                 rx.avatar(fallback=rx.cond(nome, nome, "U"), size="2", color_scheme="blue"),
                 rx.vstack(
                     rx.text(rx.cond(nome, nome, "Usuário"), color="#f1f5f9", size="2", font_weight="600"),
-                    rx.text(rx.cond(state.admin, "Administrador", "Operador"), color="#94a3b8", size="1"),
+                    rx.text(rx.cond(state.admin, "Administrador", "Operador"), color="#cbd5e1", size="1"),
                     spacing="0",
                 ),
                 spacing="2", align_items="center",
@@ -412,7 +412,7 @@ def painel_login(formulario: rx.Component) -> rx.Component:
             rx.vstack(
                 rx.text("Visualfil", size="7", color="white", font_weight="700",
                         letter_spacing="-0.03em"),
-                rx.text("Production Command Center", size="2", color="#93c5fd"),
+                rx.text("Production Command Center", size="2", color="#dbeafe"),
                 spacing="0",
             ),
             spacing="3", align_items="center",
@@ -422,14 +422,14 @@ def painel_login(formulario: rx.Component) -> rx.Component:
         rx.text(
             "Kanban offline, demandas online, compra sugerida e projeção em uma "
             "plataforma modular — pronta para crescer com a operação.",
-            color="#bfdbfe", size="3", line_height="1.7", max_width="520px",
+            color="#e2e8f0", size="3", line_height="1.7", max_width="520px",
         ),
         rx.vstack(
             *[
                 rx.hstack(
-                    rx.box(rx.icon(icone, size=16, color="#93c5fd"),
-                           background="rgba(147,197,253,.12)", border_radius="8px", padding="0.35rem"),
-                    rx.text(txt, color="#e2e8f0", size="2"),
+                    rx.box(rx.icon(icone, size=16, color="#dbeafe"),
+                           background="rgba(147,197,253,.14)", border_radius="8px", padding="0.35rem"),
+                    rx.text(txt, color="#f8fafc", size="2"),
                     spacing="3", align_items="center",
                 )
                 for icone, txt in [
