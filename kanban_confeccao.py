@@ -34,6 +34,7 @@ from nucleo import (
     normalizar_cod,
     preparar_estoque,
     preparar_pedidos,
+    para_datetime_serie,
     saldo2_por_codigo,
     sidebar_arquivos,
     tema_escuro,
@@ -441,7 +442,7 @@ def pagina_kanban():
     df_kanban["Marca"] = df_kanban["Cód Confec_norm"].map(mapa_marca).fillna("—")
 
     # 3) Preparar colunas exibidas no kanban (dados somente de Pedidos)
-    df_kanban["Dt Entrega"] = pd.to_datetime(df_kanban["Dt Entrega"], errors="coerce")
+    df_kanban["Dt Entrega"] = para_datetime_serie(df_kanban["Dt Entrega"])
     df_kanban["Saldo"] = pd.to_numeric(df_kanban["Saldo"], errors="coerce")
     df_kanban["Qtd"] = pd.to_numeric(df_kanban["Qtd"], errors="coerce")
     df_kanban["Prioridade"] = df_kanban["Dt Entrega"].apply(calcular_prioridade)

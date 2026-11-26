@@ -379,6 +379,26 @@ def ordenar_tamanhos(valores):
 
 # ==================== PRIORIDADE E FORMATAÇÃO ====================
 
+def para_datetime_serie(serie):
+    """
+    Converte uma coluna de datas com representações mistas (str ISO com ou sem
+    fuso, datetime.date, pandas.Timestamp tz-aware/tz-naive, NaT) em uma Series
+    datetime64[ns] **sem fuso**. Evita o erro 'Mixed timezones detected' e
+    comparações entre Timestamps com e sem fuso.
+    """
+    def converter(valor):
+        try:
+            if pd.isna(valor):
+                return pd.NaT
+            ts = pd.Timestamp(valor)
+            if ts.tzinfo is not None:
+                ts = ts.tz_localize(None)  # preserva a hora local exibida na planilha
+            return ts
+        except (TypeError, ValueError, OverflowError):
+            return pd.NaT
+    return pd.Series([converter(v) for v in serie], index=serie.index)
+
+
 def calcular_prioridade(dt_entrega):
     """
     Define a prioridade com base na data de entrega:
@@ -597,9 +617,9 @@ def preparar_pedidos(df):
         df["Dt Entrega"] = pd.NaT
     df["Cód Confec_norm"] = df["Cód Confec"].map(normalizar_cod)
     df["Cód Confec"] = df["Cód Confec_norm"]
-    df["Dt Entrega"] = pd.to_datetime(df["Dt Entrega"], errors="coerce")
+    df["Dt Entrega"] = para_datetime_serie(df["Dt Entrega"])
     if "Dt Emissao" in df.columns:
-        df["Dt Emissao"] = pd.to_datetime(df["Dt Emissao"], errors="coerce")
+        df["Dt Emissao"] = para_datetime_serie(df["Dt Emissao"])
     for coluna in ["Qtd", "Saldo", "Qtd Ret"]:
         if coluna in df.columns:
             df[coluna] = pd.to_numeric(df[coluna], errors="coerce")
@@ -1025,7 +1045,7 @@ def distribuir_qe(df, mapa_saldo2, fator=FATOR_URGENCIA_PADRAO):
         prioridade = pd.Series(0.0, index=resultado.index)
 
     if "Dt Entrega" in resultado.columns:
-        entrega = pd.to_datetime(resultado["Dt Entrega"], errors="coerce")
+        entrega = para_datetime_serie(resultado["Dt Entrega"])
     else:
         entrega = pd.Series(pd.NaT, index=resultado.index)
 

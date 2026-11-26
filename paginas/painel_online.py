@@ -14,7 +14,7 @@ import pandas as pd
 import streamlit as st
 
 import nuvem as cloud
-from nucleo import aplicar_estilo_comum, card, fmt_num
+from nucleo import aplicar_estilo_comum, card, fmt_num, para_datetime_serie
 from rastreabilidade import classificar_rastreabilidade
 
 st.set_page_config(page_title="Painel Online — Visualfil", page_icon="☁️", layout="wide")
@@ -60,6 +60,26 @@ def _para_df(conteudo):
     return pd.read_excel(io.BytesIO(conteudo))
 
 
+def _data_entrega(valor):
+    """Normaliza datas do GSheets/XLSX (str ISO, date, Timestamp com/sem fuso) para date."""
+    try:
+        if pd.isna(valor):
+            return None
+        return pd.Timestamp(valor).normalize().date()
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _timestamp_entrega(valor):
+    dia = _data_entrega(valor)
+    return pd.Timestamp(dia) if dia is not None else pd.NaT
+
+
+def _prioridade_entrega(valor):
+    dia = _data_entrega(valor)
+    return "Atrasado" if dia is not None and dia < date.today() else "Baixa"
+
+
 def _calcular(ped_raw, est_raw, prod_raw, catalogo_df):
     """Devolve dict com tudo que a página exibe."""
     pedidos = (
@@ -81,9 +101,10 @@ def _calcular(ped_raw, est_raw, prod_raw, catalogo_df):
         kb = ped[ped["_cod"].isin(codigos)].copy()
 
     if not kb.empty:
-        kb["Prioridade"] = kb["Dt Entrega"].apply(
-            lambda d: "Atrasado" if pd.notna(d) and d < pd.Timestamp(date.today()) else "Baixa"
-        )
+        # Datas vindas das abas rápidas do GSheets podem chegar como string ISO
+        # (com fuso) ou como date; comparar diretamente com Timestamp gera TypeError.
+        kb["Dt Entrega"] = kb["Dt Entrega"].map(_timestamp_entrega)
+        kb["Prioridade"] = kb["Dt Entrega"].apply(_prioridade_entrega)
         kb["Classificação"] = (
             kb["Status"].map(classificar_rastreabilidade) if "Status" in kb.columns
             else "Sem classificação"
@@ -211,7 +232,7 @@ def _serializar(d: dict) -> dict:
 def _desserializar(d: dict) -> dict:
     kb = pd.DataFrame(d.get("kb", []))
     if "Dt Entrega" in kb.columns:
-        kb["Dt Entrega"] = pd.to_datetime(kb["Dt Entrega"], errors="coerce")
+        kb["Dt Entrega"] = para_datetime_serie(kb["Dt Entrega"])
     return {
         "kb": kb,
         "compra_itens": pd.DataFrame(d.get("compra_itens", [])),
