@@ -27,12 +27,21 @@ def api(action: str, _usuario: str = "", _senha: str = "", **dados: Any) -> dict
     url = os.getenv("VFCLOUD_URL", "")
     if not url:
         return {"ok": False, "erro": "Configure VFCLOUD_URL no arquivo run.bat (URL do Web App)."}
+    extras = dict(dados)
+    alvo = extras.pop("usuario_alvo", None)
+    cred_u = _usuario or os.getenv("VFCLOUD_USUARIO", "")
+    cred_s = _senha if _senha else os.getenv("VFCLOUD_SENHA", "")
+    # cred_* = quem chama; `usuario` = alvo (admin criando usuário/permissão)
     corpo = {
         "action": action,
-        **dados,
-        "usuario": _usuario or os.getenv("VFCLOUD_USUARIO", ""),
-        "senha": _senha if _senha else os.getenv("VFCLOUD_SENHA", ""),
+        **extras,
+        "usuario": cred_u,
+        "senha": cred_s,
+        "cred_usuario": cred_u,
+        "cred_senha": cred_s,
     }
+    if alvo is not None:
+        corpo["usuario"] = alvo
     resposta = requests.post(url, json=corpo, timeout=180)
     resposta.raise_for_status()
     return resposta.json()
@@ -129,30 +138,39 @@ PAGINAS = (
 NIVEIS = ("visualizacao", "total", "restrito")
 
 # Cache em memória: evita baixar e converter os mesmos XLSX de novo ao trocar de página.
-# Chave: demanda_id. Valor: {"ts": epoch, "ped": DataFrame, "est": ..., "prod": ..., "derivados": {...}}
-CACHE_DADOS: dict[str, dict] = {}
+# Chave: (usuario, demanda_id) — nunca sirve dados de uma sessão para outra.
+CACHE_DADOS: dict[tuple[str, str], dict] = {}
 CACHE_TTL_SEGUNDOS = 300
 
 
-def cache_validar(demanda_id: str) -> bool:
+def _chave_cache(demanda_id: str, usuario: str = "") -> tuple[str, str]:
+    return (str(usuario or "").lower(), str(demanda_id or ""))
+
+
+def cache_validar(demanda_id: str, usuario: str = "") -> bool:
     import time
-    item = CACHE_DADOS.get(demanda_id)
+    item = CACHE_DADOS.get(_chave_cache(demanda_id, usuario))
     if not item:
         return False
     return (time.time() - item.get("ts", 0)) < CACHE_TTL_SEGUNDOS
 
 
-def cache_guardar(demanda_id: str, ped, est, prod, derivados: dict):
+def cache_guardar(demanda_id: str, ped, est, prod, derivados: dict, usuario: str = ""):
     import time
-    CACHE_DADOS[demanda_id] = {
+    CACHE_DADOS[_chave_cache(demanda_id, usuario)] = {
         "ts": time.time(), "ped": ped, "est": est, "prod": prod,
         "derivados": derivados,
     }
 
 
-def cache_limpar(demanda_id: str = ""):
+def cache_limpar(demanda_id: str = "", usuario: str = ""):
     if demanda_id:
-        CACHE_DADOS.pop(demanda_id, None)
+        CACHE_DADOS.pop(_chave_cache(demanda_id, usuario), None)
+    elif usuario:
+        u = str(usuario or "").lower()
+        for chave in list(CACHE_DADOS):
+            if chave[0] == u:
+                CACHE_DADOS.pop(chave, None)
     else:
         CACHE_DADOS.clear()
 
@@ -161,9 +179,9 @@ def cache_limpar(demanda_id: str = ""):
 
 
 class State(rx.State):
-    # sessão
-    usuario: str = ""
-    senha: str = ""
+    # sessão: credenciais são privadas (Vars com _ NÃO vão para o navegador)
+    _usuario: str = ""
+    _senha: str = ""
     logado: bool = False
     admin: bool = False
     nome: str = ""
@@ -213,8 +231,8 @@ class State(rx.State):
         self.mensagem = texto
         self.tipo_mensagem = tipo
 
-    def definir_usuario(self, valor: str): self.usuario = valor
-    def definir_senha(self, valor: str): self.senha = valor
+    def definir_usuario(self, valor: str): self._usuario = valor
+    def definir_senha(self, valor: str): self._senha = valor
     def set_nova_demanda(self, valor: str): self.nova_demanda = valor
     def set_nova_fonte(self, valor: str): self.nova_fonte = valor
     def set_novo_usuario(self, valor: str): self.novo_usuario = valor
@@ -228,15 +246,15 @@ class State(rx.State):
     url_temp: str = ""
 
     # ---------- autenticação ----------
-    def entrar(self):
+    def entrar(self, form_data: dict):
         try:
-            os.environ["VFCLOUD_USUARIO"] = self.usuario.strip()
-            os.environ["VFCLOUD_SENHA"] = self.senha
-            r = api("login", _usuario=self.usuario.strip(), _senha=self.senha)
+            self._usuario = str(form_data.get("usuario", "")).strip()
+            self._senha = str(form_data.get("senha", ""))
+            r = api("login", _usuario=self._usuario, _senha=self._senha)
             if r.get("ok"):
                 self.logado = True
                 self.admin = bool(r.get("admin"))
-                self.nome = r.get("nome") or self.usuario
+                self.nome = r.get("nome") or self._usuario
                 self.aviso("", "info")
                 return rx.redirect("/kanban")
             self.aviso(r.get("erro", "Falha no login."), "error")
@@ -244,6 +262,9 @@ class State(rx.State):
             self.aviso(str(e), "error")
 
     def sair(self):
+        cache_limpar(usuario=self._usuario)
+        self._usuario = ""
+        self._senha = ""
         self.logado = False
         self.admin = False
         self.pedidos = []
@@ -266,7 +287,7 @@ class State(rx.State):
         if verificacao:
             return verificacao
         try:
-            r = api("demandas_listar", _usuario=self.usuario, _senha=self.senha)
+            r = api("demandas_listar", _usuario=self._usuario, _senha=self._senha)
             self.demandas = r.get("demandas", [])
             self.demanda_opcoes = [
                 str(d.get("nome", "")) or str(d.get("id", "")) for d in self.demandas
@@ -285,7 +306,7 @@ class State(rx.State):
             self.aviso("Informe o nome da demanda.", "error")
             return
         try:
-            r = api("demanda_salvar", _usuario=self.usuario, _senha=self.senha, nome=self.nova_demanda.strip(),
+            r = api("demanda_salvar", _usuario=self._usuario, _senha=self._senha, nome=self.nova_demanda.strip(),
                     fonte=self.nova_fonte.strip())
             if r.get("ok"):
                 self.nova_demanda = ""
@@ -306,9 +327,13 @@ class State(rx.State):
             return
         arquivo = files[0]
         dados = await arquivo.read()
-        tipo = arquivo.filename.split(".")[0].lower().replace(" ", "")
+        nome_base = unicodedata.normalize("NFKD", arquivo.filename.split(".")[0])
+        nome_base = "".join(c for c in nome_base if not unicodedata.combining(c))
+        tipo = re.sub(r"[^a-z0-9]", "", nome_base.lower())
         if tipo not in TIPOS:
-            tipo = "pedidos"
+            self.aviso(f"Nome de arquivo não reconhecido: {arquivo.filename}. "
+                       "Use pedidos.xlsx, estoque.xlsx, producao.xlsx ou projecao.xlsx.", "error")
+            return
         try:
             try:
                 df_up = pd.read_excel(io.BytesIO(dados))
@@ -317,10 +342,10 @@ class State(rx.State):
                           for row in df_up.itertuples(index=False, name=None)]
             except Exception:
                 colunas, linhas = [], []
-            r = api("arquivo_salvar", _usuario=self.usuario, _senha=self.senha, demanda_id=self.demanda_id, tipo=tipo,
-                    colunas=colunas, linhas=linhas,
+            r = api("arquivo_salvar", _usuario=self._usuario, _senha=self._senha, demanda_id=self.demanda_id, tipo=tipo,
+                    colunas=colunas, linhas=linhas, usar_aba_rapida=bool(colunas),
                     base64=base64.b64encode(dados).decode())
-            cache_limpar(self.demanda_id)
+            cache_limpar(self.demanda_id, self._usuario)
             self.aviso(f"{tipo}.xlsx enviado." if r.get("ok") else r.get("erro", "Erro"),
                        "success" if r.get("ok") else "error")
         except Exception as e:
@@ -338,41 +363,46 @@ class State(rx.State):
             return
 
         # ---------- cache hit ----------
-        if not forcado and cache_validar(self.demanda_id):
-            self._aplicar_derivados(CACHE_DADOS[self.demanda_id]["derivados"])
+        if not forcado and cache_validar(self.demanda_id, self._usuario):
+            self._aplicar_derivados(CACHE_DADOS[_chave_cache(self.demanda_id, self._usuario)]["derivados"])
             self.diagnostico = "⚡ Dados do cache (instantâneo). Use Atualizar para recarregar."
             self.aviso("", "info")
             return
 
         self.carregando = True
-        self.diagnostico = "Buscando pré-agregação no servidor ..."
-        try:
-            agg = ler_agregado(self.demanda_id, self.usuario, self.senha)
-            if agg.get("ok") and agg.get("dados"):
-                self._aplicar_derivados(agg["dados"])
-                self.diagnostico = (
-                    f"⚡ pré-agregado ({str(agg.get('atualizado_em', ''))[:10]}) · "
-                    f"sem download de XLSX · {len(self.pedidos)} cards"
-                )
-                self.aviso("", "info")
-                return
-        except Exception:
-            pass  # backend antigo ou sem pré-agregação: cai para o download
+        if not forcado:
+            self.diagnostico = "Buscando pré-agregação no servidor ..."
+            try:
+                agg = ler_agregado(self.demanda_id, self._usuario, self._senha)
+                if agg.get("ok") and agg.get("dados"):
+                    self._aplicar_derivados(agg["dados"])
+                    self.diagnostico = (
+                        f"⚡ pré-agregado ({str(agg.get('atualizado_em', ''))[:10]}) · "
+                        f"sem download de XLSX · {len(self.pedidos)} cards"
+                    )
+                    self.aviso("", "info")
+                    return
+            except Exception:
+                pass  # backend antigo ou sem pré-agregação: cai para o download
 
         try:
             dfs, erros, modo = buscar_arquivos(
-                self.demanda_id, self.usuario, self.senha
+                self.demanda_id, self._usuario, self._senha
             )
             ped = dfs.get("pedidos", pd.DataFrame())
             est = dfs.get("estoque", pd.DataFrame())
             prod = dfs.get("producao", pd.DataFrame())
+            try:
+                catalogo = api("catalogo_listar", _usuario=self._usuario, _senha=self._senha).get("catalogo", [])
+            except Exception:
+                catalogo = []
 
             self.info_ped = f"{len(ped)} linhas" if not ped.empty else "vazio/ausente"
             self.info_est = f"{len(est)} linhas" if not est.empty else "vazio/ausente"
             self.info_prod = f"{len(prod)} linhas" if not prod.empty else "vazio/ausente"
 
             self.pedidos = self._montar_kanban(ped, est)
-            self.compra_itens, self.compra_resumo, self.total_compra = self._montar_compra(est)
+            self.compra_itens, self.compra_resumo, self.total_compra = self._montar_compra(est, catalogo)
             self.capacidade = self._montar_capacidade(prod)
             self.por_confeccao = self._agrupar(self.pedidos, "Confecção")
             self.por_status = self._agrupar(self.pedidos, "Status")
@@ -385,9 +415,9 @@ class State(rx.State):
                 "por_status": self.por_status, "por_prioridade": self.por_prioridade,
                 "info_ped": self.info_ped, "info_est": self.info_est, "info_prod": self.info_prod,
             }
-            cache_guardar(self.demanda_id, ped, est, prod, derivados)
+            cache_guardar(self.demanda_id, ped, est, prod, derivados, self._usuario)
             try:
-                salvar_agregado(self.demanda_id, self.usuario, self.senha, derivados)
+                salvar_agregado(self.demanda_id, self._usuario, self._senha, derivados)
             except Exception:
                 pass  # se o backend não tiver a ação, segue com cache local
 
@@ -411,7 +441,7 @@ class State(rx.State):
 
     def atualizar_dados(self):
         """Força recarregamento (invalida cache)."""
-        cache_limpar(self.demanda_id)
+        cache_limpar(self.demanda_id, self._usuario)
         self._carregar(forcado=True)
 
     def _aplicar_derivados(self, d: dict):
@@ -429,7 +459,7 @@ class State(rx.State):
 
     def testar_conexao(self):
         try:
-            r = api("ping", _usuario=self.usuario, _senha=self.senha)
+            r = api("ping", _usuario=self._usuario, _senha=self._senha)
             self.diagnostico = f"Ping: {r}"
             self.aviso("API respondeu: " + str(r.get("versao", "ok")), "success")
         except Exception as e:
@@ -441,12 +471,12 @@ class State(rx.State):
             self.aviso("Selecione uma demanda.", "error")
             return
         try:
-            r = api("arquivos_listar", _usuario=self.usuario, _senha=self.senha,
+            r = api("arquivos_listar", _usuario=self._usuario, _senha=self._senha,
                     demanda_id=self.demanda_id)
             self.arquivos_info = r.get("arquivos", [])
-            self.diagnostico = "Arquivos: " + ", ".join(
+            self.diagnostico = ("Arquivos: " + ", ".join(
                 f"{a.get('nome')} ({a.get('tamanho')}b)" for a in self.arquivos_info
-            ) or "Nenhum arquivo enviado para esta demanda."
+            )) if self.arquivos_info else "Nenhum arquivo enviado para esta demanda."
         except Exception as e:
             self.aviso(str(e), "error")
 
@@ -512,14 +542,14 @@ class State(rx.State):
                 "Item": str(r.get("Confeccionado", ""))[:55],
                 "Confecção": str(r.get("Confecção", "")),
                 "Marca": marcas.get(str(r.get("_cod", "")), "—"),
-                "Qtd": float(pd.to_numeric(r.get("Qtd"), errors="coerce") or 0),
-                "Saldo": float(pd.to_numeric(r.get("Saldo"), errors="coerce") or 0),
+                "Qtd": float(pd.to_numeric(r.get("Qtd"), errors="coerce").fillna(0)),
+                "Saldo": float(pd.to_numeric(r.get("Saldo"), errors="coerce").fillna(0)),
                 "Status": str(r.get("Status", "")),
                 "Prioridade": str(r.get("Prioridade", "") or "Baixa"),
             })
         return out[:500]
 
-    def _montar_compra(self, est: pd.DataFrame):
+    def _montar_compra(self, est: pd.DataFrame, catalogo: list[dict] | None = None):
         if est.empty or "Saldo 5" not in est.columns:
             return [], [], "0"
         est = est.copy()
@@ -527,18 +557,27 @@ class State(rx.State):
         neg = est[saldo5 < 0].copy()
         tec = (pd.to_numeric(neg.get('Tec Faz "x" Confec'), errors="coerce").fillna(0)
                if 'Tec Faz "x" Confec' in neg.columns else 0)
-        neg["Compra"] = ((saldo5[neg.index].abs() * 1.10) - tec).clip(lower=0).round()
         neg["_cod"] = neg["Cód Confec"].map(normalizar_cod) if "Cód Confec" in neg.columns else ""
+        # mesma regra do Painel Online: arredonda a base 1,1 e DEPOIS desconta o tecido
+        neg["Base 1,1"] = (saldo5[neg.index].abs() * 1.10).round(0)
+        neg["Compra"] = (neg["Base 1,1"] - tec).clip(lower=0).round()
+        mapa_conf = {}
+        for item in (catalogo or []):
+            cod = normalizar_cod(item.get("codigo"))
+            conf = str(item.get("confeccao") or "").strip()
+            if cod and conf:
+                mapa_conf[cod] = conf
+        neg["_conf"] = neg["_cod"].map(mapa_conf).fillna("Sem confecção cadastrada")
         itens = [{
             "Código": str(r.get("_cod", "")),
             "Item": str(r.get("Descrição", ""))[:55],
             "Saldo 5": float(r.get("Saldo 5", 0)),
+            "Confecção": str(r.get("_conf", "")),
             "Tec Faz": float(tec.get(r.name, 0)) if hasattr(tec, "get") else 0.0,
             "Compra": float(r.get("Compra", 0)),
         } for _, r in neg.iterrows()]
         itens.sort(key=lambda x: x["Compra"], reverse=True)
-        resumo_df = (neg.assign(_conf="Sem confecção cadastrada")
-                     .groupby("_conf").agg(Itens=("_cod", "count"), Compra=("Compra", "sum"))
+        resumo_df = (neg.groupby("_conf").agg(Itens=("_cod", "count"), Compra=("Compra", "sum"))
                      .reset_index())
         resumo = [{"Confecção": str(r["_conf"]), "Itens": int(r["Itens"]),
                    "Compra": float(r["Compra"])} for _, r in resumo_df.iterrows()]
@@ -547,7 +586,7 @@ class State(rx.State):
 
     def salvar_analise(self):
         try:
-            r = api("analise_salvar", _usuario=self.usuario, _senha=self.senha, demanda_id=self.demanda_id,
+            r = api("analise_salvar", _usuario=self._usuario, _senha=self._senha, demanda_id=self.demanda_id,
                     nome="Análise Reflex", dados_json=__import__("json").dumps(
                         {"resumo": self.compra_resumo, "pedidos": len(self.pedidos)}))
             self.aviso("Análise salva." if r.get("ok") else r.get("erro", "Erro"),
@@ -561,17 +600,17 @@ class State(rx.State):
         if verificacao:
             return verificacao
         try:
-            self.usuarios = api("usuarios_listar", _usuario=self.usuario, _senha=self.senha).get("usuarios", [])
-            self.usuario_opcoes = [str(u.get("usuario", "")) for u in self.usuarios if u.get("usuario")]
-            self.permissoes = api("permissoes_listar", _usuario=self.usuario, _senha=self.senha).get("permissoes", [])
+            self._usuarios = api("usuarios_listar", _usuario=self._usuario, _senha=self._senha).get("usuarios", [])
+            self._usuario_opcoes = [str(u.get("usuario", "")) for u in self._usuarios if u.get("usuario")]
+            self.permissoes = api("permissoes_listar", _usuario=self._usuario, _senha=self._senha).get("permissoes", [])
             self.carregar_demandas()
         except Exception as e:
             self.aviso(str(e), "error")
 
     def criar_usuario(self):
         try:
-            r = api("usuario_salvar", _usuario=self.usuario, _senha=self.senha, usuario=self.novo_usuario.strip(),
-                    nome=self.novo_nome.strip(), senha=self.nova_senha,
+            r = api("usuario_salvar", _usuario=self._usuario, _senha=self._senha, usuario_alvo=self.novo_usuario.strip(),
+                    nome=self.novo_nome.strip(), senha_nova=self.nova_senha,
                     admin=self.novo_admin, ativo=True)
             if r.get("ok"):
                 self.aviso("Usuário salvo.", "success")
@@ -584,7 +623,7 @@ class State(rx.State):
 
     def salvar_permissao(self):
         try:
-            r = api("permissao_salvar", _usuario=self.usuario, _senha=self.senha, usuario=self.perm_usuario,
+            r = api("permissao_salvar", _usuario=self._usuario, _senha=self._senha, usuario_alvo=self.perm_usuario,
                     pagina=self.perm_pagina, nivel=self.perm_nivel)
             self.aviso("Permissão salva." if r.get("ok") else r.get("erro", "Erro"),
                        "success" if r.get("ok") else "error")
@@ -705,11 +744,15 @@ def login_page():
             rx.vstack(
                 rx.heading("⚡ Visualfil", size="8"),
                 rx.text("Acesso à plataforma de produção", color=TEMA["muted"]),
-                rx.input(placeholder="Usuário", value=State.usuario,
-                         on_change=State.definir_usuario, width="100%"),
-                rx.input(placeholder="Senha", type="password", value=State.senha,
-                         on_change=State.definir_senha, width="100%"),
-                rx.button("Entrar", on_click=State.entrar, width="100%", size="3"),
+                rx.form(
+                    rx.vstack(
+                        rx.input(name="usuario", placeholder="Usuário", width="100%"),
+                        rx.input(name="senha", placeholder="Senha", type="password", width="100%"),
+                        rx.button("Entrar", type="submit", width="100%", size="3"),
+                        spacing="3", width="100%",
+                    ),
+                    on_submit=State.entrar, width="100%",
+                ),
                 aviso_ui(),
                 spacing="4", width="420px", padding="2rem",
             ),
@@ -828,7 +871,7 @@ def admin_page():
                         spacing="3", width="100%",
                     ), value="permissoes",
                 ),
-                width="100%",
+                default_value="demandas", width="100%",
             ),
             width="100%", spacing="4",
         )

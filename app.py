@@ -29,30 +29,32 @@ if not cloud.logado():
 
 cloud.carregar_permissoes()
 
-paginas_dict = {
-    "Online": [
-        st.Page("paginas/painel_online.py", title="Painel Online", icon="☁️", default=True),
-    ],
-    "Operação": [
-        st.Page(pagina_kanban, title="Kanban de Confecção", icon="📋"),
-    ],
-    "Análise": [
-        st.Page("paginas/dashboards.py", title="Dashboards de Pedidos", icon="📊"),
-        st.Page("paginas/analise_estoque.py", title="Análise de Estoque", icon="📦"),
-    ],
-    "Projeção": [
-        st.Page("paginas/projecao_futuro.py", title="Projeção Futuro", icon="📅"),
-        st.Page("paginas/projecao_confeccao.py", title="Projeção por Confecção", icon="🏭"),
-    ],
-    "Integração": [
-        st.Page("paginas/all_for_one.py", title="All for One", icon="🎯"),
-    ],
-}
-
+# Cada página só aparece para quem tem nível >= visualização nela.
+# Sem nenhuma regra cadastrada, cloud.pode() devolve True (comportamento legado).
+itens = [
+    ("Online", "Painel Online", "paginas/painel_online.py", "☁️", True),
+    ("Operação", "Kanban de Confecção", pagina_kanban, "📋", False),
+    ("Análise", "Dashboards de Pedidos", "paginas/dashboards.py", "📊", False),
+    ("Análise", "Análise de Estoque", "paginas/analise_estoque.py", "📦", False),
+    ("Projeção", "Projeção Futuro", "paginas/projecao_futuro.py", "📅", False),
+    ("Projeção", "Projeção por Confecção", "paginas/projecao_confeccao.py", "🏭", False),
+    ("Integração", "All for One", "paginas/all_for_one.py", "🎯", False),
+]
 if cloud.eh_admin():
-    paginas_dict["Sistema"] = [
-        st.Page("paginas/admin.py", title="Administração", icon="⚙️"),
-    ]
+    itens.append(("Sistema", "Administração", "paginas/admin.py", "⚙️", False))
+
+paginas_dict: dict[str, list] = {}
+for secao, titulo, alvo, icon, default in itens:
+    if not cloud.pode(titulo):
+        continue
+    paginas_dict.setdefault(secao, []).append(
+        st.Page(alvo, title=titulo, icon=icon, default=default)
+    )
+
+if not paginas_dict:
+    st.warning("Seu usuário não tem permissão de visualização em nenhuma página. "
+               "Solicite acesso ao administrador.")
+    st.stop()
 
 usuario = cloud.usuario_atual()
 with st.sidebar:

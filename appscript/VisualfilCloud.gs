@@ -9,14 +9,19 @@
  * Planilhas criadas automaticamente por inicializar():
  *   USUARIOS   - usuario, senha_sha, nome, admin, ativo
  *   PERMISSOES - usuario, pagina, nivel (visualizacao|total|restrito)
- *   DEMANDAS   - id, nome, fonte, criado_em, atualizado_em
+ *   DEMANDAS   - id, nome, fonte, criado_em, atualizado_em, arquivada, arquivo_id
  *   CATALOGO   - confeccao, codigo, item, tipo, tamanho, marca, atualizado_em
- *   ANALISES   - id, demanda_id, nome, criado_em, dados_json
+ *   ANALISES   - id, demanda_id, nome, criado_em, dados_json, usuario
+ *   AGREGADOS  - id, demanda_id, dados_json, atualizado_em, stamp
+ *
+ * Seguranca: inicializar() so pode ser chamado pelo HTTP quando a aba USUARIOS
+ * esta vazia E o segredo VF_SETUP_SECRET bate com p.setup_secret. O uso normal
+ * e executar inicializar() manualmente no editor do Apps Script.
  *
  * Os XLSX ficam no Google Drive, em VisualfilCloud/<id da demanda>/<tipo>.xlsx
  */
 
-var VF_VERSAO = '1.3.0';
+var VF_VERSAO = '1.4.0';
 var VF_PASTA = 'VisualfilCloud';
 
 function doPost(e) {
@@ -28,11 +33,21 @@ function doPost(e) {
     try { p = JSON.parse(bruto) || {}; }
     catch (erroPayload) { throw new Error('Payload inválido: ' + String(bruto).slice(0, 80)); }
     var acao = String(p.action || '').toLowerCase();
-    var usuario = String(p.usuario || p.user || '').trim();
-    var senha = String(p.senha || '').trim();
+    // cred_usuario/cred_senha permitem enviar `usuario` como alvo (admin)
+    var usuario = String(p.cred_usuario || p.usuario || p.user || '').trim();
+    var senha = String(p.cred_senha || p.senha || '').trim();
 
     if (acao === 'ping') return _ok({ versao: VF_VERSAO, hora: new Date().toISOString() });
-    if (acao === 'inicializar') return _acaoInicializar(p);
+    if (acao === 'inicializar') {
+      var segredo = PropertiesService.getScriptProperties().getProperty('VF_SETUP_SECRET') || '';
+      if (!segredo || String(p.setup_secret || '') !== segredo) {
+        throw new Error('Inicializacao bloqueada. Defina VF_SETUP_SECRET ou execute inicializar() no editor.');
+      }
+      if (_aba('USUARIOS').getData().length) {
+        throw new Error('Ja existem usuarios; inicializacao nao permitida.');
+      }
+      return _acaoInicializar(p);
+    }
     if (acao === 'login') return _acaoLogin(usuario, senha);
 
     // Demais ações exigem login
@@ -40,27 +55,30 @@ function doPost(e) {
     if (!user) throw new Error('Usuário ou senha inválidos.');
 
     switch (acao) {
-      case 'demandas_listar': return _ok({ demandas: _aba('DEMANDAS').getData() });
+      case 'demandas_listar': return _exigir(user, 'visualizacao'), _ok({ demandas: _aba('DEMANDAS').getData() });
       case 'demanda_salvar': return _admin(user), _acaoDemandaSalvar(p);
       case 'demanda_excluir': return _admin(user), _acaoDemandaExcluir(p);
       case 'demanda_arquivar': return _admin(user), _acaoDemandaArquivar(p);
       case 'demanda_desarquivar': return _admin(user), _acaoDemandaDesarquivar(p);
       case 'arquivo_salvar': return _admin(user), _acaoArquivoSalvar(p);
-      case 'arquivo_ler': return _acaoArquivoLer(p);
-      case 'arquivos_ler': return _acaoArquivosLer(p);
-      case 'agregado_salvar': return _acaoAgregadoSalvar(p);
-      case 'agregado_ler': return _acaoAgregadoLer(p);
-      case 'arquivos_listar': return _ok({ arquivos: _listarArquivos(p.demanda_id) });
+      case 'arquivo_ler': return _exigir(user, 'visualizacao'), _acaoArquivoLer(p);
+      case 'arquivos_ler': return _exigir(user, 'visualizacao'), _acaoArquivosLer(p);
+      case 'agregado_salvar': return _exigir(user, 'total'), _acaoAgregadoSalvar(p);
+      case 'agregado_ler': return _exigir(user, 'visualizacao'), _acaoAgregadoLer(p);
+      case 'arquivos_listar': return _exigir(user, 'visualizacao'), _ok({ arquivos: _listarArquivos(p.demanda_id) });
       case 'usuarios_listar': return _admin(user), _ok({ usuarios: _aba('USUARIOS').getData() });
-      case 'usuario_salvar': return _admin(user), _acaoUsuarioSalvar(p);
-      case 'permissoes_listar': return _ok({ permissoes: _aba('PERMISSOES').getData() });
+      case 'usuario_salvar': return _admin(user), _acaoUsuarioSalvar(p, user);
+      case 'permissoes_listar': return _admin(user), _ok({ permissoes: _aba('PERMISSOES').getData() });
+      case 'permissoes_minhas': return _exigir(user, 'visualizacao'), _ok({ permissoes: _aba('PERMISSOES').getData().filter(function (r) {
+        return String(r.usuario || '').toLowerCase() === String((user || {}).usuario || '').toLowerCase();
+      }) });
       case 'permissao_salvar': return _admin(user), _acaoPermissaoSalvar(p);
-      case 'catalogo_listar': return _ok({ catalogo: _aba('CATALOGO').getData() });
+      case 'catalogo_listar': return _exigir(user, 'visualizacao'), _ok({ catalogo: _aba('CATALOGO').getData() });
       case 'catalogo_salvar': return _admin(user), _acaoCatalogoSalvar(p);
       case 'catalogo_excluir': return _admin(user), _acaoCatalogoExcluir(p);
-      case 'analise_salvar': return _acaoAnaliseSalvar(p, user);
-      case 'analises_listar': return _ok({ analises: _aba('ANALISES').getData() });
-      case 'analise_excluir': return _admin(user), _acaoAnaliseExcluir(p);
+      case 'analise_salvar': return _exigir(user, 'total'), _acaoAnaliseSalvar(p, user);
+      case 'analises_listar': return _exigir(user, 'visualizacao'), _ok({ analises: _aba('ANALISES').getData() });
+      case 'analise_excluir': return _admin(user), _acaoAnaliseExcluir(p, user);
       default: throw new Error('Ação desconhecida: ' + acao);
     }
   } catch (erro) {
@@ -115,47 +133,93 @@ function _aba(nome) {
       var vals = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0];
       return vals.map(function (v) { return String(v || '').trim(); });
     },
-    getData: function () {
+    // linhas reais da planilha (sem filtrar vazias) — usado para salvar/excluir
+    reais: function () {
       if (sh.getLastRow() < 2) return [];
       var cols = Math.max(1, sh.getLastColumn());
       var vals = sh.getRange(2, 1, sh.getLastRow() - 1, cols).getValues();
       var head = this.cabecalhos();
-      return vals
-        .filter(function (row) { return row.some(function (v) { return String(v || '').trim() !== ''; }); })
-        .map(function (row) {
-          var o = {};
-          head.forEach(function (h, i) { if (h) o[h] = row[i]; });
-          return o;
-        });
+      return vals.map(function (row) {
+        var o = {};
+        head.forEach(function (h, i) { if (h) o[h] = row[i]; });
+        return o;
+      });
+    },
+    getData: function () {
+      return this.reais().filter(function (o) {
+        return Object.keys(o).some(function (k) { return String(o[k] || '').trim() !== ''; });
+      });
     },
     salvar: function (registro, chave, valor) {
       var head = this.cabecalhos();
-      var linha = this.getData();
+      var linhas = this.reais();
       var idx = -1;
-      for (var i = 0; i < linha.length; i++) {
-        if (String(linha[i][chave] || '') === String(valor || '')) { idx = i; break; }
+      for (var i = 0; i < linhas.length; i++) {
+        if (String(linhas[i][chave] || '') === String(valor || '')) { idx = i; break; }
       }
       var nova = head.map(function (h) { return registro[h] === undefined ? '' : registro[h]; });
       if (idx >= 0) sh.getRange(idx + 2, 1, 1, head.length).setValues([nova]);
       else sh.appendRow(nova);
     },
     excluir: function (chave, valor) {
-      var dados = this.getData();
-      for (var i = dados.length - 1; i >= 0; i--) {
-        if (String(dados[i][chave] || '') === String(valor || '')) sh.deleteRow(i + 2);
+      var linhas = this.reais();
+      for (var i = linhas.length - 1; i >= 0; i--) {
+        if (String(linhas[i][chave] || '') === String(valor || '')) sh.deleteRow(i + 2);
       }
     }
   };
 }
 
 function _garantirCabecalhos(nome, head) {
-  var sh = _planilha().getSheetByName(nome) || _planilha().insertSheet(nome);
-  if (sh.getLastRow() < 1) sh.getRange(1, 1, 1, head.length).setValues([head]);
+  var ss = _planilha();
+  var sh = ss.getSheetByName(nome) || ss.insertSheet(nome);
+  if (sh.getLastRow() < 1) {
+    sh.getRange(1, 1, 1, head.length).setValues([head]);
+    return;
+  }
+  // migração: acrescenta colunas novas sem apagar dados existentes
+  var atual = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0]
+    .map(function (v) { return String(v || '').trim(); });
+  head.forEach(function (h, i) {
+    if (atual.indexOf(h) < 0) sh.getRange(1, i + 1).setValue(h);
+  });
+}
+
+function _ehAdmin(user) {
+  return String((user || {}).admin || '').toUpperCase() === 'SIM' || (user || {}).admin === true;
 }
 
 function _admin(user) {
-  if (String(user.admin || '').toUpperCase() !== 'SIM' && String(user.admin || '') !== 'true') {
+  if (!_ehAdmin(user) && String((user || {}).admin || '') !== 'true') {
     throw new Error('Permissão negada: somente administrador.');
+  }
+}
+
+var NIVEIS_ORDEM = { restrito: 0, visualizacao: 1, total: 2 };
+
+/**
+ * Aplica as permissões da aba PERMISSOES. Compatibilidade: se a aba estiver
+ * vazia (instalação antiga), mantém o acesso como antes. Se houver regras,
+ * o usuário precisa ter pelo menos uma página com o nível pedido.
+ */
+function _exigir(user, nivelMinimo) {
+  if (_ehAdmin(user) || String((user || {}).admin || '') === 'true') return;
+  var regras = _aba('PERMISSOES').getData();
+  if (!regras.length) return;
+  var eu = String((user || {}).usuario || '').toLowerCase();
+  var minhas = regras.filter(function (r) {
+    return String(r.usuario || '').toLowerCase() === eu;
+  });
+  if (!minhas.length) throw new Error('Permissão negada para este usuário.');
+  var melhor = -1;
+  minhas.forEach(function (r) {
+    var n = NIVEIS_ORDEM[String(r.nivel || '').toLowerCase()];
+    if (n !== undefined && n > melhor) melhor = n;
+  });
+  var necessario = NIVEIS_ORDEM[String(nivelMinimo || 'visualizacao')] === undefined
+    ? 1 : NIVEIS_ORDEM[String(nivelMinimo || 'visualizacao')];
+  if (melhor < necessario) {
+    throw new Error('Permissão negada: é necessário nível ' + nivelMinimo + '.');
   }
 }
 
@@ -181,8 +245,8 @@ function _acaoInicializar(p) {
   _garantirCabecalhos('PERMISSOES', ['id', 'usuario', 'pagina', 'nivel']);
   _garantirCabecalhos('DEMANDAS', ['id', 'nome', 'fonte', 'criado_em', 'atualizado_em', 'arquivada', 'arquivo_id']);
   _garantirCabecalhos('CATALOGO', ['confeccao', 'codigo', 'item', 'tipo', 'tamanho', 'marca', 'atualizado_em']);
-  _garantirCabecalhos('ANALISES', ['id', 'demanda_id', 'nome', 'criado_em', 'dados_json']);
-  _garantirCabecalhos('AGREGADOS', ['id', 'demanda_id', 'dados_json', 'atualizado_em']);
+  _garantirCabecalhos('ANALISES', ['id', 'demanda_id', 'nome', 'criado_em', 'dados_json', 'usuario']);
+  _garantirCabecalhos('AGREGADOS', ['id', 'demanda_id', 'dados_json', 'atualizado_em', 'stamp']);
 
   var adminUser = String(p.usuario || 'admin').trim();
   var adminSenha = String(p.senha || 'admin').trim();
@@ -218,25 +282,49 @@ function _acaoDemandaSalvar(p) {
   var id = String(p.id || '').trim() || _novoId('DEM');
   var ago = new Date().toISOString();
   var atual = _aba('DEMANDAS').getData().filter(function (d) { return String(d.id || '') === id; })[0] || {};
-  _aba('DEMANDAS').salvar({
+  var registro = Object.assign({}, atual, {
     id: id,
     nome: String(p.nome || '').trim(),
     fonte: String(p.fonte || p.remessa || '').trim(),
     criado_em: atual.criado_em || ago,
     atualizado_em: ago
-  }, 'id', id);
+  });
+  _aba('DEMANDAS').salvar(registro, 'id', id);
   return _ok({ id: id });
+}
+
+function _agremover(id) {
+  _aba('AGREGADOS').excluir('demanda_id', String(id || ''));
+}
+
+function _removerAbasDemanda(id) {
+  var ss = _planilha();
+  TIPOS_OK.forEach(function (tipo) {
+    var nome = _nomeAba(id, tipo);
+    var sh = ss.getSheetByName(nome);
+    if (sh) ss.deleteSheet(sh);
+  });
+}
+
+function _stampDemanda(id) {
+  var d = _aba('DEMANDAS').getData().filter(function (x) { return String(x.id || '') === String(id || ''); })[0] || {};
+  return String(d.atualizado_em || '');
 }
 
 function _acaoDemandaExcluir(p) {
   var id = String(p.id || '').trim();
   if (!id) throw new Error('Informe o id da demanda.');
+  var d = _aba('DEMANDAS').getData().filter(function (x) { return String(x.id || '') === id; })[0] || {};
+  _removerAbasDemanda(id);
+  _agremover(id);
   _aba('DEMANDAS').excluir('id', id);
-  // remove arquivos da pasta
   var pasta = _pastaDemanda(id, false);
   if (pasta) {
     var files = pasta.getFiles();
     while (files.hasNext()) files.next().setTrashed(true);
+  }
+  if (d.arquivo_id) {
+    try { DriveApp.getFileById(String(d.arquivo_id)).setTrashed(true); } catch (e) { /* ja removido */ }
   }
   return _ok({});
 }
@@ -280,7 +368,9 @@ function _escreverAba(demandaId, tipo, colunas, linhas) {
   sh.clear();
   var head = colunas || [];
   var corpo = linhas || [];
-  var nCol = Math.max(1, head.length, corpo.length ? (corpo[0] || []).length : 1);
+  var nCol = corpo.reduce(function (max, linha) {
+    return Math.max(max, (linha || []).length);
+  }, Math.max(1, head.length));
   var valores = [head];
   corpo.forEach(function (linha) {
     var l = [];
@@ -298,6 +388,7 @@ function _lerAba(demandaId, tipo) {
   var vals = sh.getDataRange().getValues();
   if (!vals.length) return null;
   var colunas = vals[0].map(function (v) { return String(v || ''); });
+  if (!colunas.some(function (c) { return String(c).trim() !== ''; })) return null;
   var linhas = vals.slice(1).filter(function (r) {
     return r.some(function (v) { return String(v || '').trim() !== ''; });
   });
@@ -323,7 +414,9 @@ function _acaoDemandaArquivar(p) {
   if (_demandaArquivada(id)) return _ok({ id: id, arquivada: true });
 
   var destino = _tabArquivo(id);
-  var tipos = ['pedidos', 'estoque', 'producao', 'projecao'];
+  var tipos = TIPOS_OK.slice();
+  var copiadas = [];
+  // fase 1: copia e valida TUDO antes de mexer na planilha principal
   tipos.forEach(function (tipo) {
     var dados = _lerAba(id, tipo);
     if (!dados) return;
@@ -332,24 +425,31 @@ function _acaoDemandaArquivar(p) {
     sh.clear();
     var valores = [dados.colunas].concat(dados.linhas);
     sh.getRange(1, 1, valores.length, Math.max(1, dados.colunas.length)).setValues(valores);
-    var original = _planilha().getSheetByName(nome);
-    if (original) _planilha().deleteSheet(original);
+    if (sh.getLastRow() < valores.length) {
+      throw new Error('Falha ao copiar ' + tipo + ' para o arquivamento.');
+    }
+    copiadas.push(tipo);
   });
 
-  // move o arquivo para a pasta de arquivados
   var file = DriveApp.getFileById(destino.getId());
   var pasta = _pastaArquivo(true);
   pasta.addFile(file);
-  var raiz = DriveApp.getRootFolder();
-  if (raiz.getFiles().hasNext()) {
-    try { raiz.removeFile(file); } catch (e) { /* já estava na pasta */ }
-  }
+  try { DriveApp.getRootFolder().removeFile(file); } catch (e) { /* ja estava só na pasta */ }
 
+  // fase 2: metadados primeiro (evita orphan)
   var d = _aba('DEMANDAS').getData().filter(function (x) { return String(x.id || '') === id; })[0] || {};
   d.arquivada = 'SIM';
   d.arquivo_id = destino.getId();
   d.atualizado_em = new Date().toISOString();
   _aba('DEMANDAS').salvar(d, 'id', id);
+  _agremover(id);
+
+  // fase 3: remove as abas da planilha principal
+  tipos.forEach(function (tipo) {
+    if (copiadas.indexOf(tipo) < 0) return;
+    var original = _planilha().getSheetByName(_nomeAba(id, tipo));
+    if (original) _planilha().deleteSheet(original);
+  });
   return _ok({ id: id, arquivada: true, arquivo_id: destino.getId() });
 }
 
@@ -358,60 +458,84 @@ function _acaoDemandaDesarquivar(p) {
   if (!id) throw new Error('Informe a demanda.');
   var d = _aba('DEMANDAS').getData().filter(function (x) { return String(x.id || '') === id; })[0] || {};
   var arquivoId = String(d.arquivo_id || '');
-  if (arquivoId) {
-    try {
-      var destino = SpreadsheetApp.openById(arquivoId);
-      ['pedidos', 'estoque', 'producao', 'projecao'].forEach(function (tipo) {
-        var dados = _lerArquivoAba(destino, _nomeAba(id, tipo));
-        if (!dados) return;
-        _escreverAba(id, tipo, dados.colunas, dados.linhas);
-      });
-      DriveApp.getFileById(arquivoId).setTrashed(true);
-    } catch (e) { /* arquivo pode ter sido removido */ }
-  }
+  if (!arquivoId) throw new Error('Demanda sem planilha arquivada vinculada.');
+
+  // restaura tudo; qualquer falha aborta SEM alterar o estado da demanda
+  var destino = SpreadsheetApp.openById(arquivoId);
+  var restauradas = [];
+  TIPOS_OK.forEach(function (tipo) {
+    var dados = _lerArquivoAba(destino, _nomeAba(id, tipo));
+    if (!dados) return;
+    _escreverAba(id, tipo, dados.colunas, dados.linhas);
+    restauradas.push(tipo);
+  });
+  restauradas.forEach(function (tipo) {
+    var conferida = _lerAba(id, tipo);
+    if (!conferida) throw new Error('Falha ao restaurar ' + tipo + '.');
+  });
+
   d.arquivada = 'NAO';
-  d.arquivo_id = '';
   d.atualizado_em = new Date().toISOString();
+  // mantém arquivo_id como backup; NÃO descarta a planilha arquivada
   _aba('DEMANDAS').salvar(d, 'id', id);
-  return _ok({ id: id, arquivada: false });
+  _agremover(id);
+  return _ok({ id: id, arquivada: false, arquivo_id: arquivoId });
 }
 
 function _lerArquivoAba(spreadsheet, nome) {
   var sh = spreadsheet.getSheetByName(nome);
   if (!sh || sh.getLastRow() < 1) return null;
   var vals = sh.getDataRange().getValues();
-  return { colunas: vals[0].map(function (v) { return String(v || ''); }),
-           linhas: vals.slice(1) };
+  var colunas = vals[0].map(function (v) { return String(v || ''); });
+  var linhas = vals.slice(1).filter(function (r) {
+    return r.some(function (v) { return String(v || '').trim() !== ''; });
+  });
+  return { colunas: colunas, linhas: linhas };
 }
 
 var TIPOS_OK = ['pedidos', 'estoque', 'producao', 'projecao'];
 
+function _idSeguro(id) {
+  return String(id || '').trim().replace(/[^A-Za-z0-9_-]/g, '_');
+}
+
 function _acaoArquivoSalvar(p) {
-  var id = String(p.demanda_id || '').trim();
+  var id = _idSeguro(p.demanda_id);
   var tipo = String(p.tipo || '').trim().toLowerCase();
+  if (!id) throw new Error('Informe a demanda.');
   if (TIPOS_OK.indexOf(tipo) < 0) throw new Error('Tipo de arquivo inválido: ' + tipo);
   var b64 = String(p.base64 || '');
   if (!b64) throw new Error('Arquivo vazio.');
   var bytes = Utilities.base64Decode(b64);
   var pasta = _pastaDemanda(id, true);
   var nome = tipo + '.xlsx';
-  var arquivos = pasta.getFilesByName(nome);
   var blob = Utilities.newBlob(bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', nome);
-  if (arquivos.hasNext()) arquivos.next().setContent(blob);
+  var arquivos = pasta.getFilesByName(nome);
+  var antigos = [];
+  while (arquivos.hasNext()) antigos.push(arquivos.next());
+  if (antigos.length) antigos[0].setContent(blob);
   else pasta.createFile(blob);
+  antigos.slice(1).forEach(function (f) { f.setTrashed(true); });
 
-  // se o cliente enviou linhas, grava também numa aba da planilha principal (leitura rápida)
-  if (p.linhas && p.colunas) {
-    _escreverAba(id, tipo, p.colunas, p.linhas);
+  var colunas = Array.isArray(p.colunas) ? p.colunas : [];
+  var linhas = Array.isArray(p.linhas) ? p.linhas : [];
+  var usarAba = p.usar_aba_rapida === true || p.usar_aba_rapida === 'SIM'
+    || (p.usar_aba_rapida === undefined && colunas.length > 0 && linhas.length > 0 && !p.truncado);
+  if (usarAba && colunas.length > 0 && !p.truncado) {
+    _escreverAba(id, tipo, colunas, linhas);
+  } else {
+    // nunca deixa aba fantasma/antiga: Força fallback para o XLSX do Drive
+    var antiga = _planilha().getSheetByName(_nomeAba(id, tipo));
+    if (antiga) _planilha().deleteSheet(antiga);
   }
 
-  // atualiza stamp da demanda
+  _agremover(id);
   var d = _aba('DEMANDAS').getData().filter(function (x) { return String(x.id || '') === id; })[0];
   if (d) {
     d.atualizado_em = new Date().toISOString();
     _aba('DEMANDAS').salvar(d, 'id', id);
   }
-  return _ok({ tipo: tipo, tamanho: bytes.length });
+  return _ok({ tipo: tipo, tamanho: bytes.length, aba_rapida: usarAba });
 }
 
 function _acaoArquivoLer(p) {
@@ -435,17 +559,28 @@ function _acaoArquivoLer(p) {
  *             erros:{ tipo:"mensagem" } }
  */
 function _acaoArquivosLer(p) {
-  var id = String(p.demanda_id || '').trim();
-  var tipos = p.tipos && p.tipos.length ? p.tipos : ['pedidos', 'estoque', 'producao'];
-  var porka = _pastaDemanda(id, false);
+  var id = _idSeguro(p.demanda_id);
+  var tipos = Array.isArray(p.tipos) && p.tipos.length ? p.tipos : TIPOS_OK.slice();
+  tipos = tipos.map(function (t) { return String(t).trim().toLowerCase(); })
+    .filter(function (t) { return TIPOS_OK.indexOf(t) >= 0; });
+  if (!tipos.length) throw new Error('Nenhum tipo válido solicitado.');
   var arquivos = {};
   var erros = {};
+  var arquivada = _demandaArquivada(id);
   tipos.forEach(function (tipo) {
     try {
-      if (!porka) throw new Error('Demanda sem arquivos enviados.');
-      var it = porka.getFilesByName(String(tipo) + '.xlsx');
+      if (!arquivada) {
+        var rapido = _lerAba(id, tipo);
+        if (rapido) {
+          arquivos[tipo] = { colunas: rapido.colunas, linhas: rapido.linhas, origem: 'planilha' };
+          return;
+        }
+      }
+      var pasta = _pastaDemanda(id, false);
+      if (!pasta) throw new Error('Demanda sem arquivos enviados.');
+      var it = pasta.getFilesByName(tipo + '.xlsx');
       if (!it.hasNext()) throw new Error('Arquivo ' + tipo + ' não enviado.');
-      arquivos[tipo] = Utilities.base64Encode(it.next().getBlob().getBytes());
+      arquivos[tipo] = { base64: Utilities.base64Encode(it.next().getBlob().getBytes()), origem: 'drive' };
     } catch (erro) {
       erros[tipo] = String(erro && erro.message || erro);
     }
@@ -462,18 +597,23 @@ function _acaoAgregadoSalvar(p) {
     id: id,
     demanda_id: demanda,
     dados_json: String(p.dados_json || '{}'),
-    atualizado_em: new Date().toISOString()
+    atualizado_em: new Date().toISOString(),
+    stamp: _stampDemanda(demanda)
   }, 'id', id);
   return _ok({ id: id });
 }
 
-/** Devolve o resultado pré-agregado (JSON pequeno, sem baixar XLSX). */
 function _acaoAgregadoLer(p) {
   var demanda = String(p.demanda_id || '').trim();
   var linhas = _aba('AGREGADOS').getData().filter(function (r) {
     return String(r.demanda_id || '') === demanda;
   });
   if (!linhas.length) throw new Error('Sem pré-agregação para esta demanda.');
+  var stamp = String(linhas[0].stamp || '');
+  var atual = _stampDemanda(demanda);
+  if (stamp && atual && stamp !== atual) {
+    throw new Error('Pré-agregação desatualizada.');
+  }
   try {
     return _ok({ dados: JSON.parse(linhas[0].dados_json || '{}'),
                  atualizado_em: linhas[0].atualizado_em });
@@ -494,24 +634,29 @@ function _listarArquivos(id) {
   return out;
 }
 
-function _acaoUsuarioSalvar(p) {
-  var usuario = String(p.usuario || '').trim().toLowerCase();
+function _acaoUsuarioSalvar(p, user) {
+  var usuario = String(p.usuario_alvo || p.usuario || '').trim().toLowerCase();
+  var senhaNova = p.senha_nova !== undefined ? String(p.senha_nova || '') : String(p.senha || '');
   if (!usuario) throw new Error('Informe o usuário.');
   var registro = {
     usuario: usuario,
-    senha_sha: p.senha ? _sha(usuario + ':' + String(p.senha)) : (p.senha_sha || ''),
+    senha_sha: senhaNova ? _sha(usuario + ':' + senhaNova) : (p.senha_sha || ''),
     nome: String(p.nome || '').trim(),
     admin: p.admin ? 'SIM' : 'NAO',
     ativo: p.ativo === false ? 'NAO' : 'SIM'
   };
   var existente = _aba('USUARIOS').getData().filter(function (u) { return u && String(u.usuario || '') === usuario; })[0] || null;
-  if (!p.senha && existente) registro.senha_sha = existente.senha_sha;
+  if (!senhaNova && existente) registro.senha_sha = existente.senha_sha;
+  if (existente && _ehAdmin(user) &&
+      String(user.usuario || '').toLowerCase() === usuario && !p.admin) {
+    throw new Error('Você não pode remover o próprio acesso de administrador.');
+  }
   _aba('USUARIOS').salvar(registro, 'usuario', usuario);
   return _ok({ usuario: usuario });
 }
 
 function _acaoPermissaoSalvar(p) {
-  var usuario = String(p.usuario || '').trim().toLowerCase();
+  var usuario = String(p.usuario_alvo || p.usuario || '').trim().toLowerCase();
   var pagina = String(p.pagina || '').trim();
   var nivel = String(p.nivel || 'visualizacao').trim().toLowerCase();
   if (!usuario || !pagina) throw new Error('Informe usuário e página.');
@@ -554,12 +699,19 @@ function _acaoAnaliseSalvar(p, user) {
     demanda_id: String(p.demanda_id || '').trim(),
     nome: String(p.nome || '').trim(),
     criado_em: new Date().toISOString(),
-    dados_json: String(p.dados_json || '{}')
+    dados_json: String(p.dados_json || '{}'),
+    usuario: String((user || {}).usuario || '')
   }, 'id', id);
   return _ok({ id: id });
 }
 
-function _acaoAnaliseExcluir(p) {
-  _aba('ANALISES').excluir('id', String(p.id || ''));
+function _acaoAnaliseExcluir(p, user) {
+  var id = String(p.id || '').trim();
+  var alvo = _aba('ANALISES').getData().filter(function (a) { return String(a.id || '') === id; })[0] || {};
+  if (!_ehAdmin(user) &&
+      String(alvo.usuario || '').toLowerCase() !== String((user || {}).usuario || '').toLowerCase()) {
+    throw new Error('Permissão negada: análise de outro usuário.');
+  }
+  _aba('ANALISES').excluir('id', id);
   return _ok({});
 }

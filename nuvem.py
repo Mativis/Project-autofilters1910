@@ -14,11 +14,14 @@ Configuração (em ordem de prioridade):
 from __future__ import annotations
 
 import base64
+import copy
 import io
 import json
 import os
 import re
 import time
+
+import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -57,11 +60,11 @@ def cache_validar(demanda_id: str) -> bool:
 
 
 def cache_guardar(demanda_id: str, dados: dict):
-    CACHE_DADOS[demanda_id] = {"ts": time.time(), "dados": dados}
+    CACHE_DADOS[demanda_id] = {"ts": time.time(), "dados": copy.deepcopy(dados)}
 
 
 def cache_ler(demanda_id: str) -> dict:
-    return (CACHE_DADOS.get(demanda_id) or {}).get("dados", {})
+    return copy.deepcopy((CACHE_DADOS.get(demanda_id) or {}).get("dados", {}))
 
 
 def cache_limpar(demanda_id: str = ""):
@@ -71,10 +74,13 @@ def cache_limpar(demanda_id: str = ""):
         CACHE_DADOS.clear()
 
 
-def arquivos_ler(demanda_id: str, tipos=("pedidos", "estoque", "producao")):
-    """Lê vários XLSX em UMA chamada; fallback paralelo para backend antigo.
-    Devolve (bytes_por_tipo, erros, modo)."""
-    r = call("arquivos_ler", demanda_id=demanda_id, tipos=list(tipos), timeout=240)
+def arquivos_ler(demanda_id: str, tipos=("pedidos", "estoque", "producao", "projecao")):
+    """Lê vários arquivos em UMA chamada; fallback paralelo para backend antigo.
+    Devolve (DataFrames/bytes por tipo, erros, modo)."""
+    try:
+        r = call("arquivos_ler", demanda_id=demanda_id, tipos=list(tipos), timeout=240)
+    except Exception as exc:
+        r = {"ok": False, "erro": str(exc)}
     if r.get("ok") and "arquivos" in r:
         dados, erros = {}, dict(r.get("erros", {}))
         for tipo, conteudo in r["arquivos"].items():
@@ -101,7 +107,7 @@ def arquivos_ler(demanda_id: str, tipos=("pedidos", "estoque", "producao")):
             return tipo, None, str(exc)
 
     dados, erros = {}, {}
-    with ThreadPoolExecutor(max_workers=len(tipos)) as pool:
+    with ThreadPoolExecutor(max_workers=max(1, len(tipos))) as pool:
         for tipo, conteudo, erro in pool.map(um, tipos):
             if conteudo is not None:
                 dados[tipo] = conteudo
@@ -110,9 +116,22 @@ def arquivos_ler(demanda_id: str, tipos=("pedidos", "estoque", "producao")):
     return dados, erros, "paralelo"
 
 
+def json_seguro(valor):
+    '''Converte Timestamps/numpy para tipos nativos do JSON (recursivo).'''
+    if valor is None:
+        return None
+    if isinstance(valor, (bool, int, float, str)):
+        return valor
+    if isinstance(valor, dict):
+        return {str(k): json_seguro(v) for k, v in valor.items()}
+    if isinstance(valor, (list, tuple, set)):
+        return [json_seguro(v) for v in valor]
+    return _valor_json(valor)
+
+
 def agregado_salvar(demanda_id: str, dados: dict) -> dict:
     return call("agregado_salvar", demanda_id=demanda_id,
-                dados_json=json.dumps(dados, ensure_ascii=False))
+                dados_json=json.dumps(json_seguro(dados), ensure_ascii=False))
 
 
 def agregado_ler(demanda_id: str) -> dict:
@@ -170,12 +189,20 @@ def call(action: str, usuario: str = "", senha: str = "", timeout: int = 180, **
     if not endpoint:
         raise RuntimeError("Informe a URL do Web App do Visualfil Cloud.")
     u, s = credenciais()
+    extras = dict(dados)
+    alvo = extras.pop("usuario_alvo", None)
+    # `cred_*` são as credenciais de quem chama; `usuario` pode ser o alvo
+    # no backend >= 1.4 (admin criando outro usuário/permissão).
     payload = {
         "action": action,
+        **extras,
         "usuario": usuario or u,
         "senha": senha or s,
-        **dados,
+        "cred_usuario": usuario or u,
+        "cred_senha": senha or s,
     }
+    if alvo is not None:
+        payload["usuario"] = alvo
     resposta = requests.post(endpoint, json=payload, timeout=timeout)
     if resposta.status_code >= 400:
         raise RuntimeError(f"HTTP {resposta.status_code}: {resposta.text[:200]}")
@@ -226,9 +253,15 @@ def permissoes() -> dict[str, str]:
     if not logado():
         return {}
     try:
-        r = call("permissoes_listar", timeout=40)
+        r = call("permissoes_minhas", timeout=40)
     except Exception:
+        st.session_state["vf_permissoes_erro"] = True
         return {}
+    if not r.get("ok"):
+        st.session_state["vf_permissoes_erro"] = True
+        return {}
+    if not r.get("permissoes"):
+        return {p: "total" for p in PAGINAS}  # compatibilidade: sem regras, acesso total
     usuario = str(usuario_atual().get("usuario", "")).lower()
     return {
         str(x.get("pagina", "")): str(x.get("nivel", "visualizacao")).lower()
@@ -238,7 +271,13 @@ def permissoes() -> dict[str, str]:
 
 
 def nivel_pagina(pagina: str) -> str:
-    perms = st.session_state.get("vf_permissoes_cache") or permissoes()
+    if st.session_state.get("vf_permissoes_erro"):
+        return "restrito"
+    perms = st.session_state.get("vf_permissoes_cache")
+    if perms is None:
+        perms = permissoes()
+    if not perms:
+        return "total"  # nenhuma regra cadastrada = comportamento legado
     return perms.get(pagina, "restrito")
 
 
@@ -295,25 +334,35 @@ def _valor_json(v):
 def salvar_arquivo(demanda_id: str, tipo: str, arquivo_bytes: bytes) -> dict:
     """Saves the XLSX in Drive AND writes its rows into a sheet tab in the main
     spreadsheet, so later reads are fast (no XLSX download/parse)."""
+    colunas, linhas, truncado = [], [], False
     try:
-        import pandas as pd
         df = pd.read_excel(io.BytesIO(arquivo_bytes))
         colunas = [str(c) for c in df.columns]
         linhas = [[_valor_json(v) for v in row] for row in df.itertuples(index=False, name=None)]
         # limite de segurança do payload do Apps Script
         if len(linhas) > 50000:
             linhas = linhas[:50000]
+            truncado = True
     except Exception:
-        colunas, linhas = [], []
-    return call(
+        pass
+    aba_ok = bool(colunas) and not truncado
+    resultado = call(
         "arquivo_salvar",
         demanda_id=demanda_id,
         tipo=tipo,
         colunas=colunas,
         linhas=linhas,
+        usar_aba_rapida=aba_ok,
+        truncado=truncado,
         base64=base64.b64encode(arquivo_bytes).decode("ascii"),
         timeout=240,
     )
+    if not aba_ok:
+        resultado["aviso"] = (
+            "XLSX salvo no Drive, mas a aba rápida não pôde ser gravada "
+            "(arquivo grande demais ou inválido). A leitura usará o XLSX."
+        )
+    return resultado
 
 
 def _df_de_linhas(colunas, linhas) -> "pd.DataFrame":
@@ -350,7 +399,8 @@ def usuarios() -> list[dict]:
 def salvar_usuario(usuario: str, nome: str, senha: str, admin: bool, ativo: bool) -> dict:
     return call(
         "usuario_salvar",
-        usuario=usuario, nome=nome, senha=senha, admin=admin, ativo=ativo,
+        usuario_alvo=usuario, nome=nome, senha_nova=senha,
+        admin=admin, ativo=ativo,
     )
 
 
@@ -359,7 +409,7 @@ def todas_permissoes() -> list[dict]:
 
 
 def salvar_permissao(usuario: str, pagina: str, nivel: str) -> dict:
-    return call("permissao_salvar", usuario=usuario, pagina=pagina, nivel=nivel)
+    return call("permissao_salvar", usuario_alvo=usuario, pagina=pagina, nivel=nivel)
 
 
 # ============================ catálogo por confecção ============================
@@ -383,7 +433,7 @@ def salvar_analise(demanda_id: str, nome: str, dados: dict) -> dict:
         "analise_salvar",
         demanda_id=demanda_id,
         nome=nome,
-        dados_json=json.dumps(dados, ensure_ascii=False),
+        dados_json=json.dumps(json_seguro(dados), ensure_ascii=False),
     )
 
 

@@ -197,21 +197,26 @@ def _calcular(ped_raw, est_raw, prod_raw, catalogo_df):
 
 
 def _serializar(d: dict) -> dict:
+    def registros(df):
+        return cloud.json_seguro(df.to_dict("records")) if not df.empty else []
     return {
-        "kb": d["kb"].to_dict("records") if not d["kb"].empty else [],
-        "compra_itens": d["compra_itens"].to_dict("records") if not d["compra_itens"].empty else [],
-        "compra_resumo": d["compra_resumo"].to_dict("records") if not d["compra_resumo"].empty else [],
-        "total_compra": d["total_compra"],
-        "capacidade": d["capacidade"].to_dict("records") if not d["capacidade"].empty else [],
+        "kb": registros(d["kb"]),
+        "compra_itens": registros(d["compra_itens"]),
+        "compra_resumo": registros(d["compra_resumo"]),
+        "total_compra": cloud.json_seguro(d["total_compra"]),
+        "capacidade": registros(d["capacidade"]),
     }
 
 
 def _desserializar(d: dict) -> dict:
+    kb = pd.DataFrame(d.get("kb", []))
+    if "Dt Entrega" in kb.columns:
+        kb["Dt Entrega"] = pd.to_datetime(kb["Dt Entrega"], errors="coerce")
     return {
-        "kb": pd.DataFrame(d.get("kb", [])),
+        "kb": kb,
         "compra_itens": pd.DataFrame(d.get("compra_itens", [])),
         "compra_resumo": pd.DataFrame(d.get("compra_resumo", [])),
-        "total_compra": float(d.get("total_compra", 0)),
+        "total_compra": float(d.get("total_compra", 0) or 0),
         "capacidade": pd.DataFrame(d.get("capacidade", [])),
     }
 
@@ -222,6 +227,7 @@ except Exception:
     catalogo_df = pd.DataFrame()
 
 modo_carregamento = ""
+aviso_agregado = ""
 with st.status("Carregando dados otimizados…", expanded=False) as status:
     if not forcar and cloud.cache_validar(demanda_id):
         dados = _desserializar(cloud.cache_ler(demanda_id))
@@ -247,11 +253,15 @@ with st.status("Carregando dados otimizados…", expanded=False) as status:
             est_raw = _para_df(arquivos["estoque"]) if "estoque" in arquivos else None
             prod_raw = _para_df(arquivos["producao"]) if "producao" in arquivos else None
             dados = _calcular(ped_raw, est_raw, prod_raw, catalogo_df)
-            cloud.cache_guardar(demanda_id, _serializar(dados))
+            pronto = _serializar(dados)
+            cloud.cache_guardar(demanda_id, pronto)
+            aviso_agregado = ""
             try:
-                cloud.agregado_salvar(demanda_id, _serializar(dados))
-            except Exception:
-                pass
+                r_agg = cloud.agregado_salvar(demanda_id, pronto)
+                if not r_agg.get("ok"):
+                    aviso_agregado = r_agg.get("erro", "falha ao salvar pré-agregação")
+            except Exception as exc:
+                aviso_agregado = str(exc)
             modo_carregamento = f"{modo} (recalculado)"
             status.update(label=f"Carregado via {modo}", state="complete")
             if erros:
@@ -274,6 +284,8 @@ if not isinstance(capacidade, pd.DataFrame):
     capacidade = pd.DataFrame(capacidade or [])
 
 st.caption(f"🚀 Modo de carregamento: **{modo_carregamento}**")
+if aviso_agregado:
+    st.caption(f"⚠️ Pré-agregação não salva no servidor: {aviso_agregado}")
 
 if kb.empty and compra_itens.empty:
     st.warning("Esta demanda ainda não tem Pedidos ou Estoque processáveis.")

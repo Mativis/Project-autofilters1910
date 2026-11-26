@@ -170,7 +170,7 @@ with aba_demandas:
             info = arquivos.get(f"{tipo}.xlsx")
             st.caption(
                 f"**{tipo}** — "
-                + (f"enviado em {info.get('atualizado_em', '')[:10]} ({fmt_num(info.get('tamanho', 0))} bytes)"
+                + (f"enviado em {str(info.get('atualizado_em') or '')[:10]} ({fmt_num(info.get('tamanho', 0))} bytes)"
                    if info else "não enviado")
             )
         tipos = st.multiselect("Atualizar arquivos", ["pedidos", "estoque", "producao", "projecao"])
@@ -180,7 +180,7 @@ with aba_demandas:
             with col:
                 uplods[tipo] = st.file_uploader(f"{tipo}.xlsx", type=["xlsx", "xls"], key=f"up_{did}_{tipo}")
         if st.button("⬆️ Enviar arquivos", type="primary"):
-            erros = []
+            erros, avisos = [], []
             for tipo, arquivo in uplods.items():
                 if arquivo is None:
                     continue
@@ -188,6 +188,8 @@ with aba_demandas:
                     r = cloud.salvar_arquivo(did, tipo, arquivo.getvalue())
                     if not r.get("ok"):
                         erros.append(f"{tipo}: {r.get('erro')}")
+                    elif r.get("aviso"):
+                        avisos.append(f"{tipo}: {r['aviso']}")
                 except Exception as erro:
                     erros.append(f"{tipo}: {erro}")
             if erros:
@@ -195,10 +197,17 @@ with aba_demandas:
             else:
                 cloud.cache_limpar(did)
                 st.success("Arquivos enviados/atualizados.")
+                for aviso in avisos:
+                    st.warning(aviso)
                 st.rerun()
-        if st.button("🗑️ Excluir demanda", type="secondary"):
-            cloud.excluir_demanda(did)
-            st.warning("Demanda excluída.")
+        confirmar = st.checkbox("Confirmo a exclusão desta demanda", key=f"conf_excluir_{did}")
+        if st.button("🗑️ Excluir demanda", type="secondary", disabled=not confirmar):
+            r = cloud.excluir_demanda(did)
+            cloud.cache_limpar(did)
+            if r.get("ok"):
+                st.warning("Demanda excluída.")
+            else:
+                st.error(r.get("erro", "Erro ao excluir."))
             st.rerun()
 
         demanda_atual = next((d for d in demandas if d.get("id") == did), {})

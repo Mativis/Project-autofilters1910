@@ -12,7 +12,7 @@ reflex_app/
   rxconfig.py                # tema Radix (índigo) + plugins
   requirements.txt
   visualfil_reflex/
-    visualfil_reflex.py      # estado, API e 4 páginas
+    visualfil_reflex.py      # estado, API e 6 rotas (+ login)
 ```
 
 ## Como rodar (Windows)
@@ -51,7 +51,7 @@ Abra `http://localhost:3000`.
 
 ## Validação
 
-`python -m reflex compile` → **App compiled successfully** (21/20).
+`python -m reflex compile` → **App compiled successfully** (25/24).
 
 ## Performance — métodos de carregamento
 
@@ -78,9 +78,9 @@ Implementados para deixar o carregamento o mais rápido possível:
 6. **Feedback na tela**: badges com contagem de linhas e modo usado (`lote` ou
    `paralelo`), além do spinner durante o download.
 
-> O backend precisa ser **reimplantado** para expor `arquivos_ler`,
-> `agregado_salvar`/`agregado_ler` e `demanda_arquivar` (versão 1.3.0). Sem isso, o app usa lote ou
-> paralelo e recalcula localmente — também funciona.
+> O backend precisa ser **reimplantado** na versão **1.4.0** para expor
+> `arquivos_ler`, `agregado_salvar`/`agregado_ler`, `demanda_arquivar` e
+> `permissoes_minhas`. Sem isso, o app usa lote/paralelo e recalcula localmente.
 
 ## Diagnóstico de carregamento
 
@@ -101,9 +101,12 @@ funcionando e o erro aparece no aviso.
 - Todas as páginas internas chamam `verificar_login()` no `on_load` e redirecionam
   para `/` quando não há sessão.
 - `/admin` chama `verificar_admin()` e redireciona para `/kanban` se não for administrador.
-- O backend Cloud guarda níveis por usuário/página (`visualizacao`, `total`, `restrito`);
-  o painel Admin permite configurá-los. A aplicação desses níveis no Reflex é o
-  próximo passo (hoje a proteção cobre login e admin).
+- O backend Cloud aplica os níveis (`visualizacao`, `total`, `restrito`) em todas as
+  ações: leituras exigem visualização, escritas de agregado/análise exigem `total`,
+  e ações administrativas exigem `admin`. O menu do Reflex também filtra rotas.
+- Usuário e senha são **Vars privadas** (não vão ao navegador) e o login usa
+  formulário — a senha não é enviada tecla a tecla para o servidor.
+- O cache em memória é separado por `(usuário, demanda)` e é limpo no logout.
 
 | Item | Streamlit | Reflex |
 |---|---|---|
@@ -115,7 +118,5 @@ funcionando e o erro aparece no aviso.
 
 ## Próximos passos possíveis
 
-- Proteger rotas por permissão no Reflex (hoje só admin é escondido);
-- Portar Dashboards/Projeções;
 - Deploy no Reflex Cloud ou container Docker;
 - PWA/APK com shell nativo.
