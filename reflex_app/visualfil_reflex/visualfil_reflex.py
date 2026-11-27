@@ -164,10 +164,10 @@ class State(rx.State):
     # ----- sessão (campos privados não vão para o navegador) -----
     _usuario: str = ""
     _senha: str = ""
-    logado: bool = False
-    admin: bool = False
-    nome: str = ""
-    permissoes_minhas: list[dict] = []
+    logado: bool = True
+    admin: bool = True
+    nome: str = "Preview"
+    permissoes_minhas: list[dict] = [{"pagina": p, "nivel": "total"} for p in PAGINAS]
     mensagem: str = ""
     tipo_mensagem: str = "info"
 
@@ -180,6 +180,7 @@ class State(rx.State):
     nova_fonte: str = ""
     arquivos_info: list[dict] = []
     carregando: bool = False
+    entrando: bool = False
     diagnostico: str = ""
 
     pedidos: list[dict] = []
@@ -205,6 +206,11 @@ class State(rx.State):
     perm_usuario: str = ""
     perm_pagina: str = PAGINAS[0]
     perm_nivel: str = "visualizacao"
+    # tokens web por confecção
+    tokens_web: list[dict] = []
+    token_conf_nome: str = ""
+    token_conf_selecionadas: list[str] = []
+    token_web_base: str = ""
 
     # ----- Kanban de Confecção (offline) -----
     _ped_linhas: list[dict] = []
@@ -225,6 +231,7 @@ class State(rx.State):
     off_retornos: str = "—"
     off_fator: float = dados.FATOR_PADRAO
     off_desconsiderar_baixo: bool = True
+    _off_saldo2_map: dict[str, float] = {}
     off_termo: str = ""
     off_segmento: str = "Todos"
     off_prioridade: str = "Todas"
@@ -303,7 +310,9 @@ class State(rx.State):
     def set_off_termo(self, valor: str): self.off_termo = valor
     def set_off_segmento(self, valor: str): self.off_segmento = valor
     def set_off_prioridade(self, valor: str): self.off_prioridade = valor
-    def set_off_confeccao(self, valor: str): self.off_confeccao = valor
+    def set_off_confeccao(self, valor: str):
+        self.off_confeccao = valor
+        self._recalcular_qe_off()
     def set_off_ordem(self, valor: str): self.off_ordem = valor
     def set_off_fator(self, valor: str):
         try:
@@ -321,6 +330,10 @@ class State(rx.State):
 
     # ---------------------------------------------------------------- auth
     def entrar(self, form_data: dict):
+        self.entrando = True
+        self.mensagem = ""
+        self.tipo_mensagem = "info"
+        yield
         try:
             self._usuario = str(form_data.get("usuario", "")).strip()
             self._senha = str(form_data.get("senha", ""))
@@ -337,9 +350,12 @@ class State(rx.State):
             except Exception:
                 self.permissoes_minhas = []
             self.aviso("", "info")
-            return rx.redirect(self.destino_inicial())
+            yield rx.redirect(self.destino_inicial())
+            return
         except Exception as exc:
             self.aviso(str(exc), "error")
+        finally:
+            self.entrando = False
 
     def destino_inicial(self) -> str:
         """Leva o usuário à primeira área que ele realmente pode acessar."""
@@ -382,19 +398,32 @@ class State(rx.State):
         redirect = self._acesso("Painel Online")
         if redirect:
             return redirect
-        return self.carregar_demandas()
+        self.carregar_demandas()
+        if self.demanda_id:
+            yield from self._carregar(forcado=False)
 
     def iniciar_dashboards(self):
         redirect = self._acesso("Dashboards de Pedidos")
         if redirect:
             return redirect
-        return self.carregar_demandas()
+        self.carregar_demandas()
+        if self.demanda_id:
+            yield from self._carregar(forcado=False)
 
     def iniciar_projecao(self):
         redirect = self._acesso("Projeção Futuro")
         if redirect:
             return redirect
-        return self.carregar_demandas()
+        self.carregar_demandas()
+        if self.demanda_id:
+            yield from self._carregar(forcado=False)
+
+    def iniciar_arquivos(self):
+        redirect = self._acesso("Painel Online")
+        if redirect:
+            return redirect
+        self.carregar_demandas()
+        self.listar_arquivos_demanda()
 
     def iniciar_admin(self):
         redirect = self.verificar_admin()
@@ -453,18 +482,22 @@ class State(rx.State):
             self.aviso("Selecione um arquivo.", "error")
             return
         arquivo = files[0]
-        conteudo = await arquivo.read()
-        base = unicodedata.normalize("NFKD", arquivo.filename.split(".")[0])
-        base = "".join(ch for ch in base if not unicodedata.combining(ch))
-        tipo = re.sub(r"[^a-z0-9]", "", base.lower())
-        if tipo not in TIPOS:
-            self.aviso(
-                f"Nome não reconhecido: {arquivo.filename}. "
-                "Use pedidos.xlsx, estoque.xlsx, producao.xlsx ou projecao.xlsx.",
-                "error",
-            )
-            return
+        self.carregando = True
+        self.diagnostico = f"Enviando {arquivo.filename}..."
+        self.aviso("", "info")
+        yield
         try:
+            conteudo = await arquivo.read()
+            base = unicodedata.normalize("NFKD", arquivo.filename.split(".")[0])
+            base = "".join(ch for ch in base if not unicodedata.combining(ch))
+            tipo = re.sub(r"[^a-z0-9]", "", base.lower())
+            if tipo not in TIPOS:
+                self.aviso(
+                    f"Nome não reconhecido: {arquivo.filename}. "
+                    "Use pedidos.xlsx, estoque.xlsx, producao.xlsx ou projecao.xlsx.",
+                    "error",
+                )
+                return
             try:
                 frame = pd.read_excel(io.BytesIO(conteudo))
                 colunas = [str(c) for c in frame.columns]
@@ -485,16 +518,19 @@ class State(rx.State):
                 else resposta.get("erro", "Erro no envio."),
                 "success" if resposta.get("ok") else "error",
             )
+            self.diagnostico = f"Arquivo {tipo}.xlsx processado."
         except Exception as exc:
             self.aviso(str(exc), "error")
+        finally:
+            self.carregando = False
 
     # ---------------------------------------------------------------- dados online
     def carregar_dados(self):
-        self._carregar(forcado=False)
+        yield from self._carregar(forcado=False)
 
     def atualizar_dados(self):
         cache_limpar(self.demanda_id, self._usuario)
-        self._carregar(forcado=True)
+        yield from self._carregar(forcado=True)
 
     def _carregar(self, forcado: bool):
         if not self.demanda_id:
@@ -507,8 +543,11 @@ class State(rx.State):
             return
 
         self.carregando = True
+        self.diagnostico = "Buscando pré-agregação no servidor..." if not forcado else "Atualizando dados da demanda..."
+        self.aviso("", "info")
+        yield
+
         if not forcado:
-            self.diagnostico = "Buscando pré-agregação no servidor..."
             try:
                 agg = ler_agregado(self.demanda_id, self._usuario, self._senha)
                 if agg.get("ok") and agg.get("dados"):
@@ -518,11 +557,14 @@ class State(rx.State):
                         f"sem download de XLSX · {len(self.pedidos)} pedidos"
                     )
                     self.aviso("", "info")
+                    self.carregando = False
                     return
             except Exception:
                 pass
 
         try:
+            self.diagnostico = "Baixando e processando arquivos da demanda..."
+            yield
             frames, erros, modo = buscar_arquivos(
                 self.demanda_id, self._usuario, self._senha
             )
@@ -545,12 +587,27 @@ class State(rx.State):
             self.por_status = dados.agrupar(self.pedidos, "Prioridade")
             self.por_prioridade = dados.agrupar(self.pedidos, "Prioridade")
 
+            # Kanban de Confecção rico (mesma regra do offline) para consumo web/Netlify.
+            kanban_rico = {}
+            try:
+                kanban_rico = dados.montar_offline(ped, est)
+            except Exception:
+                kanban_rico = {}
+
             info = {
                 "pedidos": self.pedidos, "compra_itens": self.compra_itens,
                 "compra_resumo": self.compra_resumo, "total_compra": self.total_compra,
                 "capacidade": self.capacidade, "por_confeccao": self.por_confeccao,
                 "por_status": self.por_status, "por_prioridade": self.por_prioridade,
                 "info_ped": self.info_ped, "info_est": self.info_est, "info_prod": self.info_prod,
+                # campos para página web Kanban de Confecção
+                "cards": kanban_rico.get("cards", []),
+                "kpis": kanban_rico.get("kpis", {}),
+                "resumo_classificacao": kanban_rico.get("resumo_classificacao", []),
+                "resumo_confeccao": kanban_rico.get("resumo_confeccao", []),
+                "total_qe": kanban_rico.get("total_qe", 0),
+                "codigos_negativos": kanban_rico.get("codigos_negativos", 0),
+                "retornos": kanban_rico.get("retornos", ""),
             }
             cache_guardar(self.demanda_id, info, self._usuario)
             try:
@@ -597,21 +654,31 @@ class State(rx.State):
             self.diagnostico = f"Ping falhou: {exc}"
             self.aviso(str(exc), "error")
 
-    def ver_arquivos(self):
+    def listar_arquivos_demanda(self):
         if not self.demanda_id:
-            self.aviso("Selecione uma demanda.", "error")
+            self.arquivos_info = []
             return
         try:
             resposta = api("arquivos_listar", _usuario=self._usuario, _senha=self._senha,
                            demanda_id=self.demanda_id)
-            self.arquivos_info = resposta.get("arquivos", [])
-            self.diagnostico = (
-                "Arquivos: " + ", ".join(
-                    f"{a.get('nome')} ({a.get('tamanho')}b)" for a in self.arquivos_info
-                )
-            ) if self.arquivos_info else "Nenhum arquivo enviado para esta demanda."
+            if resposta.get("ok"):
+                self.arquivos_info = resposta.get("arquivos", [])
+                return
+            # mantém dados já carregados se a API falhar/não estiver configurada
+            if not self.arquivos_info:
+                self.aviso(resposta.get("erro", "Erro ao listar arquivos."), "error")
         except Exception as exc:
-            self.aviso(str(exc), "error")
+            if not self.arquivos_info:
+                self.aviso(str(exc), "error")
+
+    def ver_arquivos(self):
+        self.listar_arquivos_demanda()
+        if self.arquivos_info:
+            self.diagnostico = "Arquivos: " + ", ".join(
+                f"{a.get('nome')} ({a.get('tamanho')}b)" for a in self.arquivos_info
+            )
+        elif self.demanda_id:
+            self.diagnostico = "Nenhum arquivo enviado para esta demanda."
 
     def salvar_analise(self):
         try:
@@ -643,6 +710,10 @@ class State(rx.State):
             self.permissoes = api(
                 "permissoes_listar", _usuario=self._usuario, _senha=self._senha
             ).get("permissoes", [])
+            try:
+                self.tokens_web = api("tokens_web_listar", _usuario=self._usuario, _senha=self._senha).get("tokens", [])
+            except Exception:
+                self.tokens_web = []
             self.carregar_demandas()
         except Exception as exc:
             self.aviso(str(exc), "error")
@@ -675,12 +746,88 @@ class State(rx.State):
         except Exception as exc:
             self.aviso(str(exc), "error")
 
+    # ---------------------------------------------------------------- tokens web
+    def set_token_conf_nome(self, valor: str): self.token_conf_nome = valor
+    def set_token_web_base(self, valor: str): self.token_web_base = valor
+    def set_token_conf_selecionadas(self, valor: list[str]):
+        self.token_conf_selecionadas = valor if isinstance(valor, list) else [valor]
+
+    def toggle_token_conf(self, nome: str, checked: bool):
+        nome = str(nome or "").strip()
+        atual = list(self.token_conf_selecionadas or [])
+        if checked and nome and nome not in atual:
+            atual.append(nome)
+        if (not checked) and nome in atual:
+            atual.remove(nome)
+        self.token_conf_selecionadas = atual
+
+    @rx.var
+    def opcoes_confeccao_token(self) -> list[str]:
+        vals = set()
+        for c in self.tokens_web:
+            confs = c.get('confeccoes') or ([c.get('confeccao')] if c.get('confeccao') else [])
+            for x in confs:
+                x = str(x or '').strip()
+                if x: vals.add(x)
+        for c in self.por_confeccao:
+            x = str(c.get('Grupo') or c.get('grupo') or '').strip()
+            if x: vals.add(x)
+        for c in self.compra_resumo:
+            x = str(c.get('Confecção') or c.get('confeccao') or '').strip()
+            if x and x != 'Sem confecção cadastrada': vals.add(x)
+        return sorted(vals)
+
+    @rx.var
+    def token_web_url_exemplo(self) -> str:
+        base = (self.token_web_base or "").strip().rstrip("/")
+        if not base:
+            return "Informe a URL da Netlify para gerar o link completo."
+        tok = self.tokens_web[0]["token"] if self.tokens_web else "SEU_TOKEN"
+        return f"{base}/?token={tok}"
+
+    def gerar_token_web(self):
+        confs = [str(c).strip() for c in (self.token_conf_selecionadas or []) if str(c).strip()]
+        extra = (self.token_conf_nome or "").strip()
+        if extra:
+            confs.append(extra)
+        # dedupe
+        seen = set(); out=[]
+        for c in confs:
+            k=c.lower().strip()
+            if k and k not in seen:
+                seen.add(k); out.append(c)
+        if not out:
+            self.aviso("Selecione ou informe ao menos uma confecção.", "error")
+            return
+        try:
+            r = api("token_web_salvar", _usuario=self._usuario, _senha=self._senha, confeccoes=out)
+            if r.get("ok"):
+                self.aviso(f"Token gerado para {len(out)} confecção(ões).", "success")
+                self.token_conf_nome = ""
+                self.token_conf_selecionadas = []
+                self.carregar_admin()
+            else:
+                self.aviso(r.get("erro", "Erro ao gerar token."), "error")
+        except Exception as exc:
+            self.aviso(str(exc), "error")
+
+    def remover_token_web(self, token: str):
+        try:
+            r = api("token_web_excluir", _usuario=self._usuario, _senha=self._senha, token=token)
+            self.aviso("Token removido." if r.get("ok") else r.get("erro", "Erro"), "success" if r.get("ok") else "error")
+            self.carregar_admin()
+        except Exception as exc:
+            self.aviso(str(exc), "error")
+
     # ---------------------------------------------------------------- offline: upload
     async def carregar_offline(self, files: list[rx.UploadFile]):
         if not files:
             self.aviso("Selecione Pedidos.xlsx e Estoque.xlsx.", "error")
             return
         self.off_processando = True
+        self.diagnostico = "Lendo arquivos locais..."
+        self.aviso("", "info")
+        yield
         try:
             for arquivo in files:
                 conteudo = await arquivo.read()
@@ -697,6 +844,8 @@ class State(rx.State):
                 falta = "Estoque.xlsx" if self._ped_b64 else "Pedidos.xlsx"
                 self.aviso(f"Recebido. Falta enviar {falta}.", "info")
                 return
+            self.diagnostico = "Calculando Q.E. e montando quadro..."
+            yield
             ped = ler_xlsx(base64.b64decode(self._ped_b64))
             est = ler_xlsx(base64.b64decode(self._est_b64))
             self._ped_linhas = ped.to_dict(orient="records")
@@ -705,6 +854,7 @@ class State(rx.State):
             self.off_selecionados = []
             self.off_limite = 60
             self.reprocessar_offline()
+            self.aviso("Quadro montado com sucesso.", "success")
         except Exception as exc:
             self.aviso(f"Erro ao ler os arquivos: {exc}", "error")
         finally:
@@ -719,21 +869,88 @@ class State(rx.State):
             ped, est, fator=self.off_fator,
             desconsiderar_baixo=self.off_desconsiderar_baixo,
         )
-        # preserva o que já foi operado no quadro
         anteriores = {c["chave"]: c for c in self.off_cards}
         for cartao in info["cards"]:
             antigo = anteriores.get(cartao["chave"])
             if antigo:
                 for chave in ("status", "qtd_pronta", "qtd_quebra", "status_por", "status_em"):
                     cartao[chave] = antigo.get(chave, cartao[chave])
+        self._off_saldo2_map = dict(info.get("saldo2_map", {}))
         self.off_cards = info["cards"]
         self.off_kpis = info["kpis"]
         self.off_classificacao = info["resumo_classificacao"]
         self.off_confeccoes = info["resumo_confeccao"]
         self.off_avisos = info["avisos"]
-        self.off_total_qe = dados.fmt_num(info["total_qe"])
+        self._recalcular_qe_off()
         self.off_negativos = str(info["codigos_negativos"])
         self.off_retornos = info["retornos"]
+
+    def _recalcular_qe_off(self):
+        """Recalcula Q.E. usando apenas cards visíveis pelo filtro de confecção."""
+        mapa = dict(self._off_saldo2_map or {})
+        if not mapa or not self.off_cards:
+            self.off_total_qe = "0"
+            return
+        visiveis = set()
+        for c in self.off_cards:
+            conf = str(c.get("confeccao", ""))
+            if self.off_confeccao != "Todas" and conf != self.off_confeccao:
+                continue
+            visiveis.add(str(c.get("chave", "")))
+
+        # zera Q.E. de cards ocultos pelo filtro de confecção
+        cards = []
+        for c in self.off_cards:
+            cc = dict(c)
+            if str(cc.get("chave", "")) not in visiveis:
+                cc["qe"] = 0
+            cards.append(cc)
+
+        # agrupa visíveis por código
+        por_codigo: dict[str, list[dict]] = {}
+        for c in cards:
+            if str(c.get("chave", "")) not in visiveis:
+                continue
+            cod = dados.normalizar_cod(c.get("codigo"))
+            por_codigo.setdefault(cod, []).append(c)
+
+        peso = dados.PESO_PRIORIDADE
+        for cod, grupo in por_codigo.items():
+            saldo2 = mapa.get(cod)
+            saldo_pedidos = sum(max(0.0, float(c.get("saldo", 0) or 0)) for c in grupo)
+            restante = dados.calcular_qe(saldo2, saldo_pedidos, self.off_fator)
+            grupo_ordenado = sorted(grupo, key=lambda c: (peso.get(c.get("prioridade"), 9), str(c.get("entrega", "")), str(c.get("pedido", ""))))
+            for c in grupo_ordenado:
+                c["qe"] = 0
+            for c in grupo_ordenado:
+                if restante <= 0:
+                    break
+                capacidade = int(max(0, float(c.get("saldo", 0) or 0)))
+                q = min(restante, capacidade)
+                if q > 0:
+                    c["qe"] = int(q)
+                    restante -= int(q)
+
+        self.off_cards = cards
+        total_qe = sum(int(c.get("qe", 0) or 0) for c in cards)
+        self.off_total_qe = dados.fmt_num(total_qe)
+        # atualiza resumo por confecção com Q.E. recalculada
+        resumo = []
+        for conf in sorted({str(c.get("confeccao", "")) for c in cards}):
+            grupo = [c for c in cards if str(c.get("confeccao", "")) == conf]
+            resumo.append({
+                "confeccao": conf,
+                "pedidos": len(grupo),
+                "quantidade": sum(int(c.get("qtd", 0) or 0) for c in grupo),
+                "saldo": sum(float(c.get("saldo", 0) or 0) for c in grupo),
+                "qe": sum(int(c.get("qe", 0) or 0) for c in grupo),
+                "retornado": sum(int(c.get("retornado", 0) or 0) for c in grupo),
+            })
+        if resumo:
+            self.off_confeccoes = resumo
+        kpis = dict(self.off_kpis or {})
+        kpis["total_qe"] = total_qe
+        self.off_kpis = kpis
 
     # ---------------------------------------------------------------- offline: filtros
     @rx.var
@@ -935,39 +1152,41 @@ class State(rx.State):
 
 
 def botao(texto: str, icone: str = "", onclick=None, variante: str = "solid",
-          tamanho: str = "2", cor: str = "indigo", largura: str = "auto") -> rx.Component:
+          tamanho: str = "2", cor: str = "blue", largura: str = "auto") -> rx.Component:
     return rx.button(
         rx.hstack(
-            rx.icon(icone, size=15) if icone else rx.fragment(),
+            rx.cond(icone != "", rx.icon(icone, size=15), rx.fragment()),
             rx.text(texto),
             spacing="2", align_items="center",
         ),
-        on_click=onclick,
-        variant=variante,
-        color_scheme=cor,
-        size=tamanho,
-        width=largura,
+        on_click=onclick, variant=variante, color_scheme=cor, size=tamanho, width=largura,
     )
 
 
 def campo(label: str, controle: rx.Component) -> rx.Component:
     return rx.vstack(
-        rx.text(label, size="1", color=tema.C["muted"], font_weight="600"),
+        rx.text(label, size="1", color="#334155", font_weight="700", text_transform="uppercase", letter_spacing=".04em"),
         controle,
         spacing="1", align_items="start", width="100%",
     )
 
 
-def painel(titulo: str, conteudo: rx.Component, acao: rx.Component | None = None) -> rx.Component:
-    return rx.vstack(
-        rx.hstack(
-            rx.heading(titulo, size="5", color=tema.C["text"]),
-            rx.spacer(),
-            acao if acao is not None else rx.fragment(),
-            width="100%", align_items="center",
+def painel(titulo: str, conteudo: rx.Component, acao: rx.Component | None = None, subtitulo: str = "") -> rx.Component:
+    return tema.superficie(
+        rx.vstack(
+            rx.hstack(
+                rx.vstack(
+                    rx.heading(titulo, size="4", color=tema.C["text"], letter_spacing="-0.01em"),
+                    rx.cond(subtitulo != "", rx.text(subtitulo, size="2", color=tema.C["muted"]), rx.fragment()),
+                    spacing="1", align_items="start",
+                ),
+                rx.spacer(),
+                acao if acao is not None else rx.fragment(),
+                width="100%", align_items="start", wrap="wrap", gap="0.75rem",
+            ),
+            conteudo,
+            spacing="4", width="100%",
         ),
-        conteudo,
-        spacing="3", width="100%",
     )
 
 
@@ -975,33 +1194,43 @@ def seletor_demanda() -> rx.Component:
     return tema.superficie(
         rx.vstack(
             rx.hstack(
-                campo(
-                    "Demanda (Remessa)",
-                    rx.select(
-                        State.demanda_opcoes, value=State.demanda_nome,
-                        on_change=State.set_demanda_nome,
-                        placeholder="Selecione a demanda", width="330px",
+                rx.hstack(
+                    rx.box(rx.icon("database", size=18, color=tema.C["primary"]), background=tema.C["primary_soft"], border_radius="10px", padding="0.45rem"),
+                    rx.vstack(
+                        rx.text("Fonte de dados", size="3", weight="bold", color=tema.C["text"]),
+                        rx.text("Selecione a demanda para carregar pedidos, estoque e produção.", size="1", color=tema.C["muted"]),
+                        spacing="0", align_items="start",
                     ),
+                    spacing="3", align_items="center",
                 ),
-                rx.vstack(rx.text(" ", size="1"), botao("Carregar", "refresh-cw", State.carregar_dados)),
-                botao("Atualizar", "database-zap", State.atualizar_dados, "soft"),
-                rx.cond(State.carregando, rx.spinner(size="2")),
                 rx.spacer(),
-                botao("Testar API", "plug-zap", State.testar_conexao, "soft", "1"),
-                botao("Arquivos", "folder-open", State.ver_arquivos, "soft", "1"),
-                spacing="3", align_items="end", width="100%", wrap="wrap",
+                rx.hstack(
+                    botao("Atualizar lista", "refresh-cw", State.atualizar_dados, "soft", "2"),
+                    botao("Testar API", "plug-zap", State.testar_conexao, "soft", "2", "gray"),
+                    rx.link(rx.button(rx.hstack(rx.icon("folder-open", size=14), rx.text("Arquivos"), spacing="2"), variant="soft", color_scheme="gray", size="2"), href="/arquivos"),
+                    spacing="2", wrap="wrap", justify="end",
+                ),
+                width="100%", align_items="center", wrap="wrap", gap="0.75rem",
+            ),
+            rx.hstack(
+                campo(
+                    "Demanda / Remessa",
+                    rx.select(State.demanda_opcoes, value=State.demanda_nome, on_change=State.set_demanda_nome, placeholder="Selecione a demanda", width=["100%", "100%", "360px"]),
+                ),
+                rx.vstack(rx.text(" ", size="1"), botao("Carregar demanda", "download", State.carregar_dados, "solid", "2", "blue"), spacing="1"),
+                rx.cond(State.carregando, rx.hstack(rx.spinner(size="2"), rx.text("Carregando...", size="2", color=tema.C["muted"]), spacing="2"), rx.fragment()),
+                spacing="3", align_items="end", wrap="wrap", width="100%",
             ),
             rx.hstack(
                 tema.chip("Pedidos: " + State.info_ped, tema.C["info"]),
                 tema.chip("Estoque: " + State.info_est, tema.C["violet"]),
                 tema.chip("Produção: " + State.info_prod, tema.C["warning"]),
                 rx.spacer(),
-                rx.text(State.diagnostico, size="1", color=tema.C["muted"], text_align="right"),
-                spacing="2", width="100%", wrap="wrap",
+                rx.cond(State.diagnostico != "", rx.text(State.diagnostico, size="1", color=tema.C["muted_2"], text_align="right"), rx.fragment()),
+                spacing="2", width="100%", wrap="wrap", align_items="center",
             ),
-            spacing="3", width="100%",
+            spacing="4", width="100%",
         ),
-        padding="1rem",
     )
 
 
@@ -1471,45 +1700,69 @@ def resumos_off() -> rx.Component:
 # ============================ PÁGINAS ============================
 
 
-@rx.page(route="/", title="Entrar — Visualfil")
+@rx.page(route="/", title="Entrar - Visualfil")
 def login_page() -> rx.Component:
     formulario = rx.vstack(
-        rx.card(
+        rx.vstack(
+            rx.text("Acesso seguro", size="1", color=tema.C["primary"], weight="bold", text_transform="uppercase", letter_spacing=".08em"),
+            rx.heading("Entrar no Visualfil", size="7", color=tema.C["text"], letter_spacing="-0.03em"),
+            rx.text("Use suas credenciais corporativas para acessar o painel de produção.", size="2", color=tema.C["muted"]),
+            spacing="1", align_items="start", width="100%",
+        ),
+        rx.form(
             rx.vstack(
-                rx.heading("Acesso à plataforma", size="6", color=tema.C["text"]),
-                rx.text("Use seu usuário e senha corporativos.", size="2", color=tema.C["muted"]),
-                rx.form(
-                    rx.vstack(
-                        rx.input(name="usuario", placeholder="Usuário", icon="user-round", width="100%"),
-                        rx.input(name="senha", placeholder="Senha", type="password",
-                                 icon="lock-keyhole", width="100%"),
-                        rx.button("Entrar", type="submit", width="100%", size="3"),
-                        spacing="3", width="100%",
-                    ),
-                    on_submit=State.entrar, width="100%",
+                campo("Usuário", rx.input(name="usuario", placeholder="Seu usuário", size="3", width="100%")),
+                campo("Senha", rx.input(name="senha", placeholder="Sua senha", type="password", size="3", width="100%")),
+                rx.button(
+                    rx.cond(State.entrando, rx.hstack(rx.spinner(size="2"), rx.text("Conectando..."), spacing="2", align_items="center"), rx.hstack(rx.icon("log-in", size=16), rx.text("Entrar"), spacing="2", align_items="center")),
+                    type="submit", width="100%", size="3", color_scheme="blue",
+                    loading=State.entrando, disabled=State.entrando,
                 ),
-                tema.aviso_ui(State),
                 spacing="4", width="100%",
             ),
-            width="100%", max_width="380px", padding="1.8rem",
-            background=tema.C["surface"], border_radius="16px",
-            box_shadow="0 20px 50px rgba(15,23,42,.18)",
+            on_submit=State.entrar, width="100%",
         ),
-        spacing="3", width="100%", max_width="380px",
+        tema.aviso_ui(State),
+        rx.box(height="1px", background=tema.C["border"], width="100%"),
+        rx.text("Acesso por perfil. Em caso de problema, contate o administrador.", size="1", color=tema.C["muted_2"]),
+        spacing="5", width="100%",
+        background=tema.C["surface"], border=f"1px solid {tema.C['border']}",
+        border_radius="20px", padding=["1.5rem", "2rem"],
+        box_shadow="0 20px 60px rgba(15,23,42,.12)",
+        max_width="440px",
     )
+
+    overlay = rx.cond(
+        State.entrando,
+        rx.box(
+            rx.center(
+                rx.vstack(
+                    rx.spinner(size="3", color=tema.C["primary"]),
+                    rx.text("Conectando ao servidor...", size="3", weight="medium", color=tema.C["text"]),
+                    rx.text("Validando credenciais e permissões.", size="2", color=tema.C["muted"]),
+                    spacing="3", align_items="center", background=tema.C["surface"],
+                    border=f"1px solid {tema.C['border']}", border_radius="16px",
+                    padding="1.5rem 2rem", box_shadow="0 20px 60px rgba(15,23,42,.18)",
+                ), width="100%", height="100%",
+            ),
+            position="fixed", inset="0", z_index="999",
+            background="rgba(243,246,251,.72)", backdrop_filter="blur(4px)",
+        ),
+        rx.fragment(),
+    )
+
     return rx.box(
-        rx.el.style("body { background: #ffffff; }"),
-        rx.hstack(
-            rx.box(tema.painel_login(rx.fragment()),
-                   display=["none", "none", "flex"], width="48%", min_height="100vh"),
-            rx.center(formulario, width=["100%", "100%", "52%"], background=tema.C["bg"],
-                      min_height="100vh", padding="2rem"),
+        tema.css_global(),
+        overlay,
+        rx.grid(
+            rx.box(tema.painel_login(rx.fragment()), display=["none", "none", "none", "flex"], min_height="100vh"),
+            rx.center(formulario, min_height="100vh", padding=["1.25rem", "2rem"], background=tema.C["bg"]),
+            columns=rx.breakpoints(initial="1", lg="2"),
             width="100%", min_height="100vh",
         ),
     )
 
 
-@rx.page(route="/sem-acesso", title="Sem acesso — Visualfil", on_load=State.verificar_login)
 def sem_acesso_page() -> rx.Component:
     return rx.center(
         rx.card(
@@ -1710,6 +1963,46 @@ def projecao_page() -> rx.Component:
     )
 
 
+@rx.page(route="/arquivos", title="Arquivos — Visualfil", on_load=State.iniciar_arquivos)
+def arquivos_page() -> rx.Component:
+    return tema.shell(
+        rx.vstack(
+            seletor_demanda(),
+            tema.superficie(
+                rx.vstack(
+                    rx.hstack(
+                        rx.box(
+                            rx.icon("folder-open", size=20, color=tema.C["primary"]),
+                            background=tema.C["primary_soft"], border_radius="10px", padding="0.5rem",
+                        ),
+                        rx.vstack(
+                            rx.heading("Arquivos da demanda", size="4", color=tema.C["text"]),
+                            rx.text("Arquivos enviados no Google Drive/Sheets para a demanda selecionada.",
+                                    size="2", color="#475569"),
+                            spacing="0",
+                        ),
+                        rx.spacer(),
+                        botao("Atualizar lista", "refresh-cw", State.listar_arquivos_demanda, "soft", "2"),
+                        width="100%", align_items="center", spacing="3", wrap="wrap",
+                    ),
+                    rx.cond(
+                        State.arquivos_info.length() > 0,
+                        tema.tabela(State.arquivos_info, ["nome", "tamanho", "atualizado_em"], "320px"),
+                        tema.vazio("Nenhum arquivo encontrado para esta demanda. Envie os XLSX na Administração.", "folder-open"),
+                    ),
+                    spacing="3", width="100%",
+                ),
+                padding="1.1rem",
+            ),
+            spacing="3", width="100%",
+        ),
+        ativa="arquivos",
+        titulo_pagina="Arquivos",
+        subtitulo="Consulte os arquivos vinculados à demanda selecionada",
+        state=State,
+    )
+
+
 @rx.page(route="/admin", title="Administração — Visualfil", on_load=State.iniciar_admin)
 def admin_page() -> rx.Component:
     return tema.shell(
@@ -1719,6 +2012,7 @@ def admin_page() -> rx.Component:
                     rx.tabs.trigger("Demandas", value="demandas"),
                     rx.tabs.trigger("Usuários", value="usuarios"),
                     rx.tabs.trigger("Permissões", value="permissoes"),
+                    rx.tabs.trigger("Tokens Web", value="tokens"),
                 ),
                 rx.tabs.content(
                     rx.vstack(
@@ -1801,6 +2095,81 @@ def admin_page() -> rx.Component:
                         spacing="3", width="100%",
                     ),
                     value="permissoes", width="100%", padding_top="1rem",
+                ),
+                rx.tabs.content(
+                    rx.vstack(
+                        tema.superficie(
+                            rx.vstack(
+                                rx.hstack(
+                                    campo("Confecções (selecione 1+)", rx.box(
+                                        rx.vstack(
+                                            rx.cond(
+                                                State.opcoes_confeccao_token.length() > 0,
+                                                rx.foreach(
+                                                    State.opcoes_confeccao_token,
+                                                    lambda nome: rx.checkbox(
+                                                        nome,
+                                                        checked=State.token_conf_selecionadas.contains(nome),
+                                                        on_change=lambda v, n=nome: State.toggle_token_conf(n, v),
+                                                        size="1",
+                                                    ),
+                                                ),
+                                                rx.text("Nenhuma confecção encontrada. Carregue uma demanda ou digite abaixo.", size="1", color="#64748b"),
+                                            ),
+                                            spacing="1", align_items="start",
+                                        ),
+                                        max_height="160px", overflow_y="auto", padding="0.5rem",
+                                        border="1px solid #e2e8f0", border_radius="8px", background="#fff", width="360px",
+                                    )),
+                                    campo("Ou digitar nova", rx.input(
+                                        placeholder="Ex.: CONFECÇÃO A", value=State.token_conf_nome,
+                                        on_change=State.set_token_conf_nome, width="240px")),
+                                    campo("URL base Netlify", rx.input(
+                                        placeholder="https://seu-site.netlify.app", value=State.token_web_base,
+                                        on_change=State.set_token_web_base, width="320px")),
+                                    botao("Gerar token", "key-round", State.gerar_token_web),
+                                    spacing="3", align_items="end", wrap="wrap", width="100%",
+                                ),
+                                rx.text(State.token_web_url_exemplo, size="1", color="#475569"),
+                                rx.text("O token pode incluir várias confecções; a página web mostrará apenas os dados dessas confecções.", size="1", color="#64748b"),
+                                spacing="2", width="100%",
+                            ),
+                            padding="1rem",
+                        ),
+                        tema.superficie(
+                            rx.vstack(
+                                rx.hstack(rx.icon("link", size=16, color=tema.C["primary"]), rx.text("Tokens gerados", weight="medium"), spacing="2"),
+                                rx.cond(
+                                    State.tokens_web.length() > 0,
+                                    rx.table.root(
+                                        rx.table.header(rx.table.row(
+                                            rx.table.column_header_cell("Confecções"),
+                                            rx.table.column_header_cell("Token"),
+                                            rx.table.column_header_cell("Link"),
+                                            rx.table.column_header_cell("Ação"),
+                                        )),
+                                        rx.table.body(
+                                            rx.foreach(
+                                                State.tokens_web,
+                                                lambda t: rx.table.row(
+                                                    rx.table.cell(t.get("confeccao", t.get("confeccoes", "")).to_string()),
+                                                    rx.table.cell(rx.code(t["token"].to_string(), size="1")),
+                                                    rx.table.cell(rx.cond(State.token_web_base != "", rx.text(State.token_web_base.to_string() + "/?token=" + t["token"].to_string(), size="1", color="#475569"), rx.text("Defina URL base", size="1", color="#94a3b8"))),
+                                                    rx.table.cell(rx.button("Remover", size="1", variant="soft", color_scheme="red", on_click=lambda: State.remover_token_web(t["token"]))),
+                                                ),
+                                            )
+                                        ),
+                                        variant="surface", size="1", width="100%",
+                                    ),
+                                    tema.vazio("Nenhum token gerado. Selecione confecções e clique em Gerar.", "key-round"),
+                                ),
+                                spacing="3", width="100%",
+                            ),
+                            padding="1rem",
+                        ),
+                        spacing="3", width="100%",
+                    ),
+                    value="tokens", width="100%", padding_top="1rem",
                 ),
                 default_value="demandas", width="100%",
             ),

@@ -79,6 +79,9 @@ function doPost(e) {
       case 'analise_salvar': return _exigir(user, 'total'), _acaoAnaliseSalvar(p, user);
       case 'analises_listar': return _exigir(user, 'visualizacao'), _ok({ analises: _aba('ANALISES').getData() });
       case 'analise_excluir': return _admin(user), _acaoAnaliseExcluir(p, user);
+      case 'tokens_web_listar': return _admin(user), _acaoTokensWebListar();
+      case 'token_web_salvar': return _admin(user), _acaoTokenWebSalvar(p);
+      case 'token_web_excluir': return _admin(user), _acaoTokenWebExcluir(p);
       default: throw new Error('Ação desconhecida: ' + acao);
     }
   } catch (erro) {
@@ -87,9 +90,191 @@ function doPost(e) {
   }
 }
 
-function doGet(e) {
-  return ContentService.createTextOutput(JSON.stringify({ ok: true, versao: VF_VERSAO, nome: 'Visualfil Cloud API' }))
+function _normConf(v) {
+  return String(v || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function _lerTokensConf() {
+  var bruto = String(PropertiesService.getScriptProperties().getProperty('VF_CONF_TOKENS_JSON') || '').trim();
+  if (!bruto) return {};
+  try {
+    var obj = JSON.parse(bruto);
+    return obj && typeof obj === 'object' ? obj : {};
+  } catch (e) { return {}; }
+}
+
+function _salvarTokensConf(obj) {
+  PropertiesService.getScriptProperties().setProperty('VF_CONF_TOKENS_JSON', JSON.stringify(obj || {}));
+}
+
+function _confsDoToken(ent) {
+  if (typeof ent === 'string') return [ent].filter(Boolean);
+  var arr = Array.isArray(ent.confeccoes) ? ent.confeccoes : (ent.confeccao ? [ent.confeccao] : []);
+  return arr.map(function (c) { return String(c || '').trim(); }).filter(Boolean);
+}
+
+function _resolverLeitura(p) {
+  var recebido = String((p && (p.token || p.read_token || p.t)) || '').trim();
+  var adminToken = String(PropertiesService.getScriptProperties().getProperty('VF_READ_TOKEN') || '').trim();
+  var confTokens = _lerTokensConf();
+  var temConfTokens = Object.keys(confTokens).length > 0;
+
+  if (adminToken && recebido && recebido === adminToken) {
+    return { ok: true, tipo: 'admin', confeccoes: [] };
+  }
+  if (recebido && confTokens[recebido]) {
+    var entrada = confTokens[recebido];
+    var confs = _confsDoToken(entrada);
+    var ativo = typeof entrada === 'object' ? String((entrada || {}).ativo) !== 'false' : true;
+    if (ativo && confs.length) return { ok: true, tipo: 'conf', confeccoes: confs };
+  }
+  if (!adminToken && !temConfTokens) return { ok: true, tipo: 'aberto', confeccoes: [] };
+  if (!recebido) return { ok: false, erro: 'Token de leitura obrigatório.' };
+  return { ok: false, erro: 'Token de leitura inválido.' };
+}
+
+function _gerarTokenWeb() {
+  return 'vf_' + Utilities.getUuid().replace(/-/g, '').slice(0, 24);
+}
+
+function _acaoTokensWebListar() {
+  var mapa = _lerTokensConf();
+  var tokens = Object.keys(mapa).map(function (token) {
+    var ent = mapa[token];
+    var confs = _confsDoToken(ent);
+    var ativo = typeof ent === 'object' ? String((ent || {}).ativo) !== 'false' : true;
+    return { token: token, confeccoes: confs, confeccao: confs.join(', '), ativo: ativo };
+  }).sort(function (a, b) { return String(a.confeccao).localeCompare(String(b.confeccao)); });
+  return _ok({ tokens: tokens });
+}
+
+function _acaoTokenWebSalvar(p) {
+  var confs = Array.isArray(p.confeccoes) ? p.confeccoes : String(p.confeccao || p.confeccoes || '').split(',');
+  confs = confs.map(function (c) { return String(c || '').trim(); }).filter(Boolean);
+  // dedupe case-insensitive
+  var seen = {};
+  confs = confs.filter(function (c) { var k = _normConf(c); if (seen[k]) return false; seen[k]=true; return true; });
+  if (!confs.length) throw new Error('Informe ao menos uma confecção.');
+  var mapa = _lerTokensConf();
+  var token = String(p.token || '').trim();
+  if (!token) token = _gerarTokenWeb();
+  var ativo = p.ativo === false ? false : true;
+  mapa[token] = { confeccoes: confs, ativo: ativo, atualizado_em: new Date().toISOString() };
+  _salvarTokensConf(mapa);
+  return _ok({ token: token, confeccoes: confs, ativo: ativo });
+}
+
+function _acaoTokenWebExcluir(p) {
+  var token = String(p.token || '').trim();
+  var mapa = _lerTokensConf();
+  if (token && mapa[token]) delete mapa[token];
+  _salvarTokensConf(mapa);
+  return _ok({});
+}
+
+function _filtrarPorConfeccoes(dados, confeccoes) {
+  var alvos = (confeccoes || []).map(_normConf).filter(Boolean);
+  if (!alvos.length || !dados || typeof dados !== 'object') return dados;
+  var set = {};
+  alvos.forEach(function(a){ set[a]=true; });
+  var out = JSON.parse(JSON.stringify(dados));
+
+  function matchConf(obj) {
+    var c = obj.confeccao || obj['Confecção'] || obj['Confecao'] || obj.conf || obj.grupo || obj.Grupo || obj['CONFECCAO'] || '';
+    return !!set[_normConf(c)];
+  }
+
+  if (Array.isArray(out.cards)) out.cards = out.cards.filter(matchConf);
+  if (Array.isArray(out.pedidos)) out.pedidos = out.pedidos.filter(matchConf);
+  if (Array.isArray(out.compra_itens)) out.compra_itens = out.compra_itens.filter(matchConf);
+  if (Array.isArray(out.compra_resumo)) out.compra_resumo = out.compra_resumo.filter(matchConf);
+  if (Array.isArray(out.capacidade)) out.capacidade = out.capacidade.filter(matchConf);
+  if (Array.isArray(out.por_confeccao)) out.por_confeccao = out.por_confeccao.filter(function (r) { return !!set[_normConf(r.Grupo || r.grupo || r.confeccao)]; });
+  if (Array.isArray(out.resumo_confeccao)) out.resumo_confeccao = out.resumo_confeccao.filter(function (r) { return !!set[_normConf(r.confeccao || r.Confeccao || r['Confecção'])]; });
+
+  // Recalcula KPIs/resumos dos cards filtrados
+  var cards = out.cards || [];
+  var totalQe = 0, atrasados = 0, saldo = 0, codigos = {};
+  var porPri = {}, porClass = {};
+  cards.forEach(function (c) {
+    var qe = Number(c.qe || 0) || 0;
+    var sal = Number(c.saldo || 0) || 0;
+    var pri = String(c.prioridade || 'Média');
+    var cls = String(c.classificacao || 'Sem classificação');
+    totalQe += qe; saldo += sal;
+    if (pri === 'Atrasado') atrasados += 1;
+    if (c.codigo) codigos[String(c.codigo)] = true;
+    porPri[pri] = (porPri[pri] || 0) + 1;
+    porClass[cls] = porClass[cls] || { classificacao: cls, pedidos: 0, saldo: 0, qe: 0 };
+    porClass[cls].pedidos += 1; porClass[cls].saldo += sal; porClass[cls].qe += qe;
+  });
+  out.total_qe = totalQe;
+  out.codigos_negativos = Object.keys(codigos).length;
+  out.kpis = {
+    'Pedidos': cards.length,
+    'Atrasados': atrasados,
+    'Saldo': Math.round(saldo),
+    'Q.E.': Math.round(totalQe)
+  };
+  out.resumo_classificacao = Object.keys(porClass).map(function (k) { return porClass[k]; });
+  out.por_status = Object.keys(porPri).map(function (k) { return { Grupo: k, Pedidos: porPri[k] }; });
+  out.por_prioridade = out.por_status.slice();
+  out.confeccoes_filtradas = confeccoes;
+  out.confeccao_filtrada = confeccoes.join(', ');
+  return out;
+}
+
+function _saidaJson(obj, callback) {
+  if (callback) {
+    var cb = String(callback).replace(/[^\w$.]/g, '');
+    return ContentService.createTextOutput(cb + '(' + JSON.stringify(obj) + ');')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e) {
+  try {
+    var p = (e && e.parameter) ? e.parameter : {};
+    var acao = String(p.action || '').toLowerCase();
+    var callback = String(p.callback || '').trim();
+
+    if (!acao || acao === 'ping') {
+      return _saidaJson({ ok: true, versao: VF_VERSAO, nome: 'Visualfil Cloud API' }, callback);
+    }
+
+    var auth = _resolverLeitura(p);
+    if (!auth.ok) return _saidaJson({ ok: false, erro: auth.erro }, callback);
+
+    if (acao === 'demandas' || acao === 'demandas_listar') {
+      var demandas = _aba('DEMANDAS').getData().filter(function (d) { return String(d.arquivada || 'NAO') !== 'SIM'; });
+      return _saidaJson({ ok: true, versao: VF_VERSAO, demandas: demandas, perfil: auth.tipo, confeccoes: auth.confeccoes || [] }, callback);
+    }
+
+    if (acao === 'kanban' || acao === 'agregado') {
+      var demanda = String(p.demanda_id || p.demanda || '').trim();
+      if (!demanda) return _saidaJson({ ok: false, erro: 'Informe demanda_id.' }, callback);
+      var res = _acaoAgregadoLer({ demanda_id: demanda });
+      var payload = JSON.parse(res.getContent());
+      if (payload.ok && auth.tipo === 'conf' && (auth.confeccoes || []).length) {
+        payload.dados = _filtrarPorConfeccoes(payload.dados || {}, auth.confeccoes);
+        payload.confeccoes_filtradas = auth.confeccoes;
+        payload.confeccao_filtrada = auth.confeccoes.join(', ');
+      }
+      payload.versao = VF_VERSAO;
+      payload.demanda_id = demanda;
+      payload.perfil = auth.tipo;
+      return _saidaJson(payload, callback);
+    }
+
+    return _saidaJson({ ok: false, erro: 'Ação GET desconhecida: ' + acao }, callback);
+  } catch (erro) {
+    var cb = String(((e && e.parameter) || {}).callback || '').trim();
+    return _saidaJson({ ok: false, erro: String(erro && erro.message || erro) }, cb);
+  }
 }
 
 /** Executar uma vez no editor do Apps Script para criar planilhas e o admin. */
@@ -589,18 +774,56 @@ function _acaoArquivosLer(p) {
 }
 
 /** Salva o resultado já processado da demanda (pré-agregação). */
+function _extrairConfeccoesAgregado(dados) {
+  var set = {};
+  function add(v){ var s=String(v||'').trim(); if(s) set[s]=true; }
+  (dados.cards || []).forEach(function(c){ add(c.confeccao || c['Confecção'] || c['Confeccao']); });
+  (dados.pedidos || []).forEach(function(c){ add(c.confeccao || c['Confecção'] || c['Confecao']); });
+  (dados.resumo_confeccao || []).forEach(function(c){ add(c.confeccao || c['Confecção'] || c['Confeccao'] || c.Grupo); });
+  (dados.por_confeccao || []).forEach(function(c){ add(c.confeccao || c['Confecção'] || c.Grupo); });
+  (dados.compra_resumo || []).forEach(function(c){ add(c.confeccao || c['Confecção'] || c['Confeccao']); });
+  return Object.keys(set).sort(function(a,b){ return a.localeCompare(b); });
+}
+
+function _sincronizarCatalogoConfeccoes(confeccoes) {
+  var aba = _aba('CATALOGO');
+  var existentes = aba.getData();
+  var tem = {};
+  existentes.forEach(function(r){
+    var c = String(r.confeccao || '').trim();
+    if(c) tem[_normConf(c)] = true;
+  });
+  var ago = new Date().toISOString();
+  var add = 0;
+  (confeccoes||[]).forEach(function(conf){
+    var nome = String(conf||'').trim();
+    if(!nome) return;
+    var k = _normConf(nome);
+    if(tem[k]) return;
+    var cod = '__CONF__' + k.replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'').toUpperCase();
+    aba.salvar({ confeccao:nome, codigo:cod, item:'', tipo:'confecção', tamanho:'', marca:'', atualizado_em:ago }, 'codigo', cod);
+    tem[k] = true; add++;
+  });
+  return add;
+}
+
 function _acaoAgregadoSalvar(p) {
   var demanda = String(p.demanda_id || '').trim();
   if (!demanda) throw new Error('Informe demanda_id.');
   var id = 'AGG-' + demanda;
+  var dadosStr = String(p.dados_json || '{}');
+  var dados = {};
+  try { dados = JSON.parse(dadosStr) || {}; } catch(e) { dados = {}; }
+  var confs = _extrairConfeccoesAgregado(dados);
+  var confsNovas = _sincronizarCatalogoConfeccoes(confs);
   _aba('AGREGADOS').salvar({
     id: id,
     demanda_id: demanda,
-    dados_json: String(p.dados_json || '{}'),
+    dados_json: dadosStr,
     atualizado_em: new Date().toISOString(),
     stamp: _stampDemanda(demanda)
   }, 'id', id);
-  return _ok({ id: id });
+  return _ok({ id: id, confeccoes: confs.length, confeccoes_novas: confsNovas });
 }
 
 function _acaoAgregadoLer(p) {

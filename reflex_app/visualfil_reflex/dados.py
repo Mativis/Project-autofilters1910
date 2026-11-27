@@ -369,6 +369,7 @@ def montar_offline(
         "total_qe": sum(c["qe"] for c in cards),
         "codigos_negativos": sum(v < 0 for v in mapa_saldo2.values()),
         "retornos": retornos,
+        "saldo2_map": mapa_saldo2,
     }
 
 
@@ -449,8 +450,11 @@ def montar_capacidade(prod: pd.DataFrame) -> list[dict]:
         return []
     p = prod.copy()
     p["_q"] = pd.to_numeric(p[col_qtd], errors="coerce").fillna(0)
-    g = p.groupby(col_conf)["_q"].sum().sort_values(ascending=False)
-    return [{"Confecção": str(k), "Retornos": float(v)} for k, v in g.items()][:100]
+    grp = p.groupby(col_conf).agg(Retornos=("_q", "sum"), Itens=("_q", "count")).sort_values("Retornos", ascending=False)
+    return [
+        {"Confecção": str(k), "Retornos": float(r["Retornos"]), "Itens": int(r["Itens"])}
+        for k, r in grp.iterrows()
+    ][:100]
 
 
 def agrupar(dados: list[dict], chave: str) -> list[dict]:

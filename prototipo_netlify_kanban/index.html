@@ -1,0 +1,408 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Visualfil — Kanban de Confecção</title>
+  <style>
+    :root {
+      --bg:#f3f6fb; --surface:#fff; --surface-alt:#f8fafc; --text:#0f172a; --muted:#475569; --border:#e6edf5;
+      --primary:#2563eb; --primary-soft:#dbeafe; --danger:#dc2626; --warning:#d97706; --success:#059669; --info:#0284c7;
+      --shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.04); --radius:16px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text)}
+    button,input,select{font:inherit}
+    .app{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+    .sidebar{background:linear-gradient(180deg,#0b1220 0%,#111827 100%);color:#f8fafc;padding:20px 16px;display:flex;flex-direction:column;gap:20px}
+    .brand{display:flex;gap:12px;align-items:center}.brand-mark{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,#3b82f6,#2563eb);font-weight:800;box-shadow:0 8px 24px rgba(37,99,235,.35)}
+    .brand small{display:block;color:#bfdbfe;font-size:12px;margin-top:2px}
+    .nav-group{font-size:11px;letter-spacing:.12em;color:#94a3b8;font-weight:700;padding:0 10px;margin-bottom:8px}
+    .nav-item{width:100%;border:1px solid transparent;background:transparent;color:#e2e8f0;padding:10px 12px;border-radius:10px;display:flex;gap:10px;align-items:center;text-align:left}
+    .nav-item.active{background:rgba(59,130,246,.14);border-color:rgba(59,130,246,.22);color:#fff}
+    .nav-item .dot{width:8px;height:8px;border-radius:50%;background:#60a5fa;opacity:0}.nav-item.active .dot{opacity:1}
+    .sidebar-foot{margin-top:auto;padding:12px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);color:#cbd5e1;font-size:12px;line-height:1.5}
+    .main{min-width:0}.topbar{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);padding:20px 24px;display:flex;gap:16px;align-items:center;justify-content:space-between}
+    .title h1{margin:0;font-size:28px;letter-spacing:-.02em}.title p{margin:4px 0 0;color:var(--muted);font-size:14px}
+    .actions{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{border:1px solid var(--border);background:var(--surface);color:var(--text);padding:9px 14px;border-radius:10px;cursor:pointer;font-weight:600;font-size:14px}
+    .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)} .btn.soft{background:var(--primary-soft);color:#1d4ed8;border-color:#bfdbfe}
+    .content{padding:24px;max-width:1880px;margin:0 auto;display:grid;gap:20px}
+    .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+    .kpi{padding:16px;position:relative;overflow:hidden}.kpi::before{content:'';position:absolute;left:0;top:0;right:0;height:3px;background:linear-gradient(90deg,rgba(37,99,235,.9),rgba(37,99,235,0));opacity:.55}
+    .kpi .label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#334155;font-weight:700}.kpi .value{font-size:30px;font-weight:700;letter-spacing:-.03em;margin:8px 0 4px}.kpi .foot{color:var(--muted);font-size:12px}
+    .panel{padding:18px}.filters{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;gap:12px;align-items:end}
+    .field label{display:block;font-size:12px;color:#334155;font-weight:700;margin-bottom:6px}
+    .input,.select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #cbd5e1;background:#fff;color:var(--text)}
+    .board{display:grid;grid-template-columns:repeat(4,minmax(290px,1fr));gap:16px;overflow-x:auto;padding-bottom:4px}
+    .col{background:var(--surface-alt);border:1px solid var(--border);border-radius:16px;min-height:560px;display:flex;flex-direction:column}
+    .col-head{padding:14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
+    .col-dot{width:10px;height:10px;border-radius:50%}.col-head h2{font-size:14px;margin:0;font-weight:700}
+    .count{margin-left:auto;font-size:12px;color:#334155;background:#fff;border:1px solid var(--border);padding:2px 8px;border-radius:999px;font-weight:700}
+    .col-body{padding:12px;display:grid;gap:12px;align-content:start}
+    .ticket{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px;box-shadow:0 1px 2px rgba(15,23,42,.03);cursor:pointer;transition:.15s}
+    .ticket:hover{transform:translateY(-1px);border-color:#bfdbfe;box-shadow:0 8px 24px rgba(37,99,235,.08)}
+    .ticket-top{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:8px}
+    .pedido{font-size:12px;font-weight:700;color:#334155}
+    .badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;white-space:nowrap}
+    .b-danger{background:#fee2e2;color:#991b1b}.b-warning{background:#fef3c7;color:#92400e}.b-info{background:#dbeafe;color:#1e40af}.b-muted{background:#e2e8f0;color:#334155}.b-success{background:#d1fae5;color:#065f46}
+    .ticket h3{margin:0 0 8px;font-size:14px;line-height:1.35}
+    .meta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+    .chip{font-size:11px;padding:3px 8px;border-radius:999px;background:#f1f5f9;color:#334155;font-weight:600}
+    .progress{height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden}.progress>span{display:block;height:100%;background:var(--primary)}
+    .ticket-foot{display:flex;justify-content:space-between;gap:8px;margin-top:10px;font-size:12px;color:var(--muted)}
+    .empty{padding:24px;text-align:center;color:var(--muted);font-size:13px;border:1px dashed #cbd5e1;border-radius:12px;background:#fff}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
+    .modal-backdrop.open{display:flex}
+    .modal{width:min(760px,100%);background:#fff;border-radius:18px;border:1px solid var(--border);box-shadow:0 20px 60px rgba(15,23,42,.2)}
+    .modal-head{padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:12px;align-items:start}
+    .modal-head h2{margin:0;font-size:22px}.modal-head p{margin:4px 0 0;color:var(--muted);font-size:14px}
+    .modal-body{padding:20px;display:grid;gap:16px}.detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .detail{padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface-alt)}
+    .detail .k{font-size:11px;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:.04em}.detail .v{margin-top:4px;font-size:14px;font-weight:600;word-break:break-word}
+    .statusbar{font-size:12px;color:#475569;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid var(--border)}
+    @media (max-width:1200px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.filters{grid-template-columns:1fr 1fr 1fr}}
+    @media (max-width:860px){.app{grid-template-columns:1fr}.sidebar{display:none}.topbar,.content{padding:16px}.detail-grid{grid-template-columns:1fr 1fr}}
+    @media (max-width:560px){.kpis,.detail-grid{grid-template-columns:1fr}.filters{grid-template-columns:1fr}.title h1{font-size:24px}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">V</div><div><strong>Visualfil</strong><small>Production Command Center</small></div></div>
+      <div><div class="nav-group">OPERAÇÃO</div><div class="nav-item active"><span class="dot"></span>Kanban de Confecção</div></div>
+      <div class="sidebar-foot" id="fonte-info">Carregando dados...</div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div class="title"><h1>Kanban de Confecção</h1><p>Visualização no padrão Visualfil — dados reais gerados a partir de Pedidos/Estoque.</p></div>
+        <div class="actions">
+          <button class="btn soft" id="btn-reset">Limpar filtros</button>
+          <button class="btn" id="btn-recarregar">Recarregar dados</button>
+          <button class="btn primary" id="btn-export">Exportar CSV</button>
+        </div>
+      </header>
+      <div class="content">
+        <section class="kpis">
+          <div class="card kpi"><div class="label">Pedidos no quadro</div><div class="value" id="kpi-total">0</div><div class="foot">após filtros</div></div>
+          <div class="card kpi"><div class="label">Códigos Saldo 2 negativo</div><div class="value" id="kpi-codigos">0</div><div class="foot">base do kanban</div></div>
+          <div class="card kpi"><div class="label">Q.E. total</div><div class="value" id="kpi-qe">0</div><div class="foot">quantidade emergencial</div></div>
+          <div class="card kpi"><div class="label">Atrasados</div><div class="value" id="kpi-atrasado">0</div><div class="foot">prioridade crítica</div></div>
+          <div class="card kpi"><div class="label">Unidades (saldo)</div><div class="value" id="kpi-saldo">0</div><div class="foot">saldo filtrado</div></div>
+          <div class="card kpi"><div class="label">Confecções</div><div class="value" id="kpi-confeccoes">0</div><div class="foot">no filtro atual</div></div>
+        </section>
+        <section class="card panel">
+          <div class="filters">
+            <div class="field"><label for="f-busca">Busca</label><input id="f-busca" class="input" type="search" placeholder="Pedido, código, item, confecção..."></div>
+            <div class="field"><label for="f-confeccao">Confecção</label><select id="f-confeccao" class="select"></select></div>
+            <div class="field"><label for="f-prioridade">Prioridade</label><select id="f-prioridade" class="select"><option value="">Todas</option><option>Atrasado</option><option>Alta</option><option>Média</option><option>Baixa</option></select></div>
+            <div class="field"><label for="f-classificacao">Classificação</label><select id="f-classificacao" class="select"></select></div>
+            <div class="field"><label for="f-status">Status</label><select id="f-status" class="select"><option value="">Todos</option><option>Pendente</option><option>Em andamento</option><option>Pronto</option><option>Entregue</option></select></div>
+            <button class="btn" id="btn-atrasados">Só atrasados</button>
+          </div>
+        </section>
+        <div class="statusbar" id="statusbar">Aguardando dados...</div>
+        <div class="card panel" id="login-token" style="display:none;padding:14px">
+          <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+            <div class="field" style="flex:1;min-width:240px"><label for="token-input">Token de acesso</label><input id="token-input" class="input" type="password" placeholder="Cole o token da confecção"></div>
+            <button class="btn primary" id="btn-token">Entrar</button>
+            <button class="btn" id="btn-token-sair">Limpar token</button>
+          </div>
+          <div style="margin-top:8px;font-size:12px;color:#475569">Cada confecção pode receber um token próprio. O token também pode vir pela URL: <code>?token=...</code></div>
+        </div>
+        <section class="board" id="board"></section>
+      </div>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="modal">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head"><div><h2 id="modal-title">Detalhe</h2><p id="modal-sub"></p></div><button class="btn" id="modal-close">Fechar</button></div>
+      <div class="modal-body"><div class="detail-grid" id="modal-grid"></div></div>
+    </div>
+  </div>
+
+  <script>
+    // Configure aqui a URL /exec do Apps Script e, se usar, o token de leitura.
+    window.VISUALFIL_CONFIG = {
+      apiUrl: "https://script.google.com/macros/s/AKfycbwGLpHH6X_oH4dH2GUZJOnAFVHi21TJlS-6mPqh5DGINjFNcBRwAnG84z1CNXU1Rkp44g/exec",        // ex: "https://script.google.com/macros/s/SEU_DEPLOY/exec"
+      readToken: "",    // opcional; defina VF_READ_TOKEN no Apps Script
+      demandaId: "",    // opcional; vazio = primeira demanda ativa
+      autoRefreshMs: 120000
+    };
+  </script>
+  <script src="dados.js"></script>
+  <script>
+    const COLUNAS = [
+      { key: 'Pendente', rotulo: 'A produzir', cor: '#0284c7' },
+      { key: 'Em andamento', rotulo: 'Em produção', cor: '#d97706' },
+      { key: 'Pronto', rotulo: 'Pronto', cor: '#059669' },
+      { key: 'Entregue', rotulo: 'Entregue', cor: '#64748b' },
+    ];
+    const state = { busca:'', confeccao:'', prioridade:'', classificacao:'', status:'', soAtrasados:false, payload:null };
+    const fmt = n => new Intl.NumberFormat('pt-BR').format(Number(n || 0));
+    const el = id => document.getElementById(id);
+    const norm = v => String(v ?? '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+
+    function prioridadeBadge(p) {
+      const cls = p === 'Atrasado' ? 'b-danger' : p === 'Alta' ? 'b-warning' : p === 'Média' ? 'b-info' : 'b-muted';
+      return `<span class="badge ${cls}">${p || '—'}</span>`;
+    }
+    function cards() { return (state.payload && state.payload.cards) ? state.payload.cards : []; }
+    function dadosFiltrados() {
+      const b = norm(state.busca).trim();
+      return cards().filter(d => {
+        if (state.confeccao && d.confeccao !== state.confeccao) return false;
+        if (state.prioridade && d.prioridade !== state.prioridade) return false;
+        if (state.classificacao && d.classificacao !== state.classificacao) return false;
+        if (state.status && d.status !== state.status) return false;
+        if (state.soAtrasados && d.prioridade !== 'Atrasado') return false;
+        if (b) {
+          const hay = norm(`${d.pedido} ${d.codigo} ${d.item} ${d.confeccao} ${d.marca} ${d.classificacao}`);
+          if (!hay.includes(b)) return false;
+        }
+        return true;
+      });
+    }
+    function renderKPIs(rows) {
+      el('kpi-total').textContent = fmt(rows.length);
+      el('kpi-codigos').textContent = fmt(state.payload?.codigos_negativos || 0);
+      el('kpi-qe').textContent = fmt(rows.reduce((a,r)=>a + Number(r.qe||0), 0));
+      el('kpi-atrasado').textContent = fmt(rows.filter(r => r.prioridade === 'Atrasado').length);
+      el('kpi-saldo').textContent = fmt(rows.reduce((a,r)=>a + Number(r.saldo||0), 0));
+      el('kpi-confeccoes').textContent = fmt(new Set(rows.map(r=>r.confeccao)).size);
+    }
+    function cardHtml(d) {
+      const total = Math.max(Number(d.saldo||0), 1);
+      const feito = Math.min(total, Number(d.qtd_pronta||0) + Number(d.qtd_quebra||0));
+      const pct = Math.min(100, Math.round((feito / total) * 100));
+      return `
+        <article class="ticket" data-chave="${String(d.chave).replace(/"/g,'&quot;')}">
+          <div class="ticket-top"><span class="pedido">#${d.pedido} · ${d.codigo}</span>${prioridadeBadge(d.prioridade)}</div>
+          <h3>${escapeHtml(d.item || 'Sem descrição')}</h3>
+          <div class="meta">
+            <span class="chip">${escapeHtml(d.confeccao || '—')}</span>
+            <span class="chip">Saldo ${fmt(d.saldo)}</span>
+            ${Number(d.qe||0) > 0 ? `<span class="chip">Q.E. ${fmt(d.qe)}</span>` : ''}
+            <span class="chip">${escapeHtml(d.classificacao || 'Sem classificação')}</span>
+          </div>
+          <div class="progress"><span style="width:${pct}%"></span></div>
+          <div class="ticket-foot"><span>Entrega ${escapeHtml(d.entrega || '—')}</span><span>${escapeHtml(d.dias || '')}</span></div>
+        </article>`;
+    }
+    function escapeHtml(v){ return String(v ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+    function renderBoard() {
+      const rows = dadosFiltrados();
+      renderKPIs(rows);
+      el('statusbar').textContent = `${fmt(rows.length)} pedidos exibidos · Q.E. filtrada ${fmt(rows.reduce((a,r)=>a+Number(r.qe||0),0))} · Retorno: ${state.payload?.retornos || '—'} · Gerado em ${state.payload?.gerado_em || '—'}`;
+      el('board').innerHTML = COLUNAS.map(col => {
+        const itens = rows.filter(r => r.status === col.key);
+        return `<section class="col"><div class="col-head"><span class="col-dot" style="background:${col.cor}"></span><h2>${col.rotulo}</h2><span class="count">${itens.length}</span></div><div class="col-body">${itens.length ? itens.map(cardHtml).join('') : `<div class="empty">Nenhum pedido neste status.</div>`}</div></section>`;
+      }).join('');
+      el('board').querySelectorAll('.ticket').forEach(t => t.addEventListener('click', () => abrirModal(t.dataset.chave)));
+    }
+    function abrirModal(chave) {
+      const d = cards().find(x => String(x.chave) === String(chave));
+      if (!d) return;
+      el('modal-title').textContent = `Pedido #${d.pedido}`;
+      el('modal-sub').textContent = `${d.codigo} · ${d.item || ''}`;
+      const campos = [
+        ['Confecção', d.confeccao], ['Status', COLUNAS.find(c=>c.key===d.status)?.rotulo || d.status], ['Prioridade', d.prioridade],
+        ['Classificação', d.classificacao], ['Entrega', d.entrega], ['Prazo', d.dias], ['Marca', d.marca],
+        ['Quantidade', fmt(d.qtd)], ['Saldo', fmt(d.saldo)], ['Q.E.', fmt(d.qe)], ['Pronta', fmt(d.qtd_pronta)], ['Quebra', fmt(d.qtd_quebra)],
+        ['Retornado', fmt(d.retornado)], ['Retorno %', `${Number(d.retorno_pct||0).toFixed(1)}%`],
+      ];
+      el('modal-grid').innerHTML = campos.map(([k,v]) => `<div class="detail"><div class="k">${escapeHtml(k)}</div><div class="v">${escapeHtml(v ?? '—')}</div></div>`).join('');
+      el('modal').classList.add('open');
+    }
+    function fecharModal(){ el('modal').classList.remove('open'); }
+    function exportarCSV() {
+      const rows = dadosFiltrados();
+      const cols = ['pedido','codigo','item','confeccao','marca','status','prioridade','classificacao','entrega','dias','qtd','saldo','qe','qtd_pronta','qtd_quebra','retornado','retorno_pct'];
+      const esc = v => `"${String(v ?? '').replace(/"/g,'""')}"`;
+      const csv = [cols.join(';'), ...rows.map(r => cols.map(c => esc(r[c])).join(';'))].join('\n');
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'kanban-confeccao.csv'; a.click(); URL.revokeObjectURL(a.href);
+    }
+    function preencherFiltros() {
+      const confs = [''].concat([...new Set(cards().map(d => d.confeccao).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR')));
+      el('f-confeccao').innerHTML = confs.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c || 'Todas')}</option>`).join('');
+      const classifs = [''].concat([...new Set(cards().map(d => d.classificacao).filter(Boolean))]);
+      el('f-classificacao').innerHTML = classifs.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c || 'Todas')}</option>`).join('');
+    }
+    function cfg() { return window.VISUALFIL_CONFIG || {}; }
+    function qs(k){ return new URLSearchParams(location.search).get(k) || ''; }
+    function tokenAtual() {
+      return String(qs('token') || cfg().readToken || localStorage.getItem('vf_kanban_token') || '').trim();
+    }
+    function definirToken(t) {
+      const v = String(t || '').trim();
+      if (v) localStorage.setItem('vf_kanban_token', v); else localStorage.removeItem('vf_kanban_token');
+    }
+
+    async function fetchJson(url) {
+      const resp = await fetch(url, { cache: 'no-store' });
+      const txt = await resp.text();
+      try { return JSON.parse(txt); } catch (_) {
+        const m = txt.match(/^[\w$.]+\((.*)\);?\s*$/s);
+        if (m) return JSON.parse(m[1]);
+        throw new Error('Resposta inválida da API');
+      }
+    }
+
+    function mapCard(c, i) {
+      const get = (...keys) => { for (const k of keys) { if (c[k] !== undefined && c[k] !== null && c[k] !== '') return c[k]; } return ''; };
+      const num = (...keys) => { const v = get(...keys); const n = Number(String(v).replace(',', '.')); return Number.isFinite(n) ? n : 0; };
+      const statusRaw = String(get('status','Status') || 'Pendente');
+      const statusMap = { 'A produzir':'Pendente', 'Pendente':'Pendente', 'Em produção':'Em andamento', 'Em andamento':'Em andamento', 'Pronto':'Pronto', 'Entregue':'Entregue' };
+      return {
+        chave: String(get('chave','id','key') || `${get('pedido','Pedido','Compra')}-${get('codigo','Código','Cod','cod')}-${i}`),
+        pedido: String(get('pedido','Pedido','Compra')),
+        codigo: String(get('codigo','Código','Cod','cod')),
+        item: String(get('item','Item','Confeccionado','Descricao','Descrição')),
+        confeccao: String(get('confeccao','Confecção','Confecao','confeção')),
+        marca: String(get('marca','Marca') || '—'),
+        qtd: num('qtd','Qtd','Quantidade'),
+        saldo: num('saldo','Saldo'),
+        qe: num('qe','QE','Q.E.','Q.E','qtd_emergencial'),
+        entrega: String(get('entrega','Entrega','Dt Entrega','dt_entrega') || '—'),
+        dias: String(get('dias','Dias') || ''),
+        prioridade: String(get('prioridade','Prioridade') || 'Média'),
+        classificacao: String(get('classificacao','Classificação','Classificacao') || 'Sem classificação'),
+        status: statusMap[statusRaw] || statusRaw,
+        qtd_pronta: num('qtd_pronta','Qtd Pronta','pronta'),
+        qtd_quebra: num('qtd_quebra','Qtd Quebra','quebra'),
+        retornado: num('retornado','Retornado'),
+        retorno_pct: num('retorno_pct','Retorno %'),
+      };
+    }
+
+    function normalizarPayload(payload) {
+      if (!payload) return null;
+      const base = (payload.dados && typeof payload.dados === 'object') ? { ...payload.dados, atualizado_em: payload.atualizado_em || payload.dados.atualizado_em } : payload;
+      const cardsRaw = base.cards || base.pedidos || base.itens || [];
+      const cards = Array.isArray(cardsRaw) ? cardsRaw.map(mapCard) : [];
+      const kpis = base.kpis || {
+        'Pedidos': cards.length,
+        'Atrasados': cards.filter(c=>c.prioridade==='Atrasado').length,
+        'Saldo': cards.reduce((a,c)=>a+Number(c.saldo||0),0),
+      };
+      return {
+        ...base,
+        cards,
+        kpis,
+        total_qe: base.total_qe ?? cards.reduce((a,c)=>a+Number(c.qe||0),0),
+        codigos_negativos: base.codigos_negativos ?? new Set(cards.map(c=>c.codigo).filter(Boolean)).size,
+        atualizado_em: base.atualizado_em || payload.atualizado_em || payload.gerado_em,
+        fonte: base.fonte || payload.fonte || { pedidos:'Google Sheets/Drive', estoque:'Google Sheets/Drive' },
+      };
+    }
+
+    function exigirTokenSeNecessario(err) {
+      const msg = String((err && err.message) || err || '');
+      if (/token/i.test(msg)) {
+        el('statusbar').innerHTML = `Acesso restrito. Informe o token no campo abaixo. <span style="color:#b91c1c">${escapeHtml(msg)}</span>`;
+        el('login-token').style.display = 'flex';
+        return true;
+      }
+      return false;
+    }
+
+    async function carregarOnline() {
+      const c = cfg();
+      const apiUrl = String(c.apiUrl || '').trim();
+      if (!apiUrl) return null;
+      const token = tokenAtual();
+      let demandaId = String(qs('demanda') || c.demandaId || '').trim();
+
+      if (!demandaId) {
+        const urlDemandas = new URL(apiUrl);
+        urlDemandas.searchParams.set('action', 'demandas');
+        if (token) urlDemandas.searchParams.set('token', token);
+        const rd = await fetchJson(urlDemandas.toString());
+        if (!rd.ok) throw new Error(rd.erro || 'Falha ao listar demandas');
+        const demandas = (rd.demandas || []).filter(d => String(d.arquivada || 'NAO') !== 'SIM');
+        if (!demandas.length) throw new Error('Nenhuma demanda ativa encontrada.');
+        demandaId = String(demandas[0].id || '').trim();
+      }
+
+      const urlKanban = new URL(apiUrl);
+      urlKanban.searchParams.set('action', 'kanban');
+      urlKanban.searchParams.set('demanda_id', demandaId);
+      if (token) urlKanban.searchParams.set('token', token);
+      const rk = await fetchJson(urlKanban.toString());
+      if (!rk.ok) throw new Error(rk.erro || 'Falha ao carregar kanban');
+      const payload = normalizarPayload(rk);
+      if (payload) {
+        payload.demanda_id = demandaId;
+        payload.perfil = rk.perfil || payload.perfil || '';
+        payload.confeccao_filtrada = rk.confeccao_filtrada || payload.confeccao_filtrada || '';
+      }
+      return payload;
+    }
+
+    async function carregarDados() {
+      el('statusbar').textContent = 'Carregando dados...';
+      let payload = null;
+      let origem = '';
+      try {
+        payload = await carregarOnline();
+        if (payload) origem = 'online';
+      } catch (err) {
+        console.warn('Falha online, tentando local', err);
+        const tokenErr = exigirTokenSeNecessario(err);
+        if (tokenErr) return;
+        el('statusbar').textContent = 'Falha online: ' + (err.message || err) + '. Tentando dados locais...';
+      }
+
+      if (!payload) {
+        payload = normalizarPayload(window.KANBAN_DADOS || null);
+        if (payload) origem = 'local-js';
+      }
+      if (!payload) {
+        try {
+          const resp = await fetch('dados.json', { cache: 'no-store' });
+          if (resp.ok) payload = normalizarPayload(await resp.json());
+          if (payload) origem = 'local-json';
+        } catch (_) {}
+      }
+      if (!payload) {
+        el('statusbar').textContent = 'Não foi possível carregar dados online nem locais. Configure apiUrl ou gere dados.js com gerar_dados.py.';
+        el('fonte-info').textContent = 'Sem dados carregados.';
+        return;
+      }
+      state.payload = payload;
+      preencherFiltros();
+      const f = payload.fonte || {};
+      const origemTxt = origem === 'online' ? 'Google Sheets / Apps Script' : 'Arquivo local (dados.js/json)';
+      const conf = payload.confeccao_filtrada ? `<br><br>Confecção<br>${escapeHtml(payload.confeccao_filtrada)}` : '';
+      el('fonte-info').innerHTML = `<strong>Fonte</strong><br>${escapeHtml(origemTxt)}<br>${escapeHtml(f.pedidos||'Pedidos')}<br>${escapeHtml(f.estoque||'Estoque')}<br><br>Atualizado em<br>${escapeHtml(payload.atualizado_em || payload.gerado_em || '—')}${payload.demanda_id ? `<br><br>Demanda<br>${escapeHtml(payload.demanda_id)}` : ''}${conf}`;
+      const lt = el('login-token'); if (lt) lt.style.display = origem === 'online' ? 'none' : lt.style.display;
+      renderBoard();
+    }
+    function init() {
+      el('f-busca').addEventListener('input', e => { state.busca = e.target.value; renderBoard(); });
+      el('f-confeccao').addEventListener('change', e => { state.confeccao = e.target.value; renderBoard(); });
+      el('f-prioridade').addEventListener('change', e => { state.prioridade = e.target.value; renderBoard(); });
+      el('f-classificacao').addEventListener('change', e => { state.classificacao = e.target.value; renderBoard(); });
+      el('f-status').addEventListener('change', e => { state.status = e.target.value; renderBoard(); });
+      el('btn-atrasados').addEventListener('click', () => { state.soAtrasados = !state.soAtrasados; el('btn-atrasados').classList.toggle('primary', state.soAtrasados); renderBoard(); });
+      el('btn-reset').addEventListener('click', () => { Object.assign(state,{busca:'',confeccao:'',prioridade:'',classificacao:'',status:'',soAtrasados:false}); ['f-busca','f-confeccao','f-prioridade','f-classificacao','f-status'].forEach(id=>el(id).value=''); el('btn-atrasados').classList.remove('primary'); renderBoard(); });
+      el('btn-export').addEventListener('click', exportarCSV);
+      el('btn-recarregar').addEventListener('click', carregarDados);
+      const btnToken = document.getElementById('btn-token');
+      if (btnToken) btnToken.addEventListener('click', () => { definirToken(document.getElementById('token-input').value); carregarDados(); });
+      const btnTokenSair = document.getElementById('btn-token-sair');
+      if (btnTokenSair) btnTokenSair.addEventListener('click', () => { definirToken(''); const i=document.getElementById('token-input'); if(i) i.value=''; carregarDados(); });
+      el('modal-close').addEventListener('click', fecharModal);
+      el('modal').addEventListener('click', e => { if (e.target.id === 'modal') fecharModal(); });
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharModal(); });
+      carregarDados();
+      const ms = Number((window.VISUALFIL_CONFIG||{}).autoRefreshMs || 0);
+      if (ms > 0) setInterval(carregarDados, ms);
+    }
+    init();
+  </script>
+</body>
+</html>

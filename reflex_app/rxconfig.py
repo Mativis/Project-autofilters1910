@@ -4,7 +4,12 @@ config = rx.Config(
     app_name="visualfil_reflex",
     plugins=[
         rx.plugins.RadixThemesPlugin(
-            theme=rx.theme(accent_color="indigo", radius="medium")
+            theme=rx.theme(
+                appearance="light",
+                accent_color="blue",
+                gray_color="slate",
+                radius="large",
+            )
         ),
         rx.plugins.SitemapPlugin(),
     ],
